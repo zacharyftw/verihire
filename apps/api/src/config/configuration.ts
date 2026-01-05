@@ -47,6 +47,12 @@ export default () => ({
     bucket: process.env.S3_BUCKET || 'verihire',
   },
 
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-4o',
+    baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  },
+
   cors: {
     origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
   },
