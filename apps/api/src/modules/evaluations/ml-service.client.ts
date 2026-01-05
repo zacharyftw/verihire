@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-
+import { createHash } from 'crypto';
+import Keyv from 'keyv';
+import KeyvRedis from '@keyv/redis';
 /**
  * Request/Response types for ML Service integration
  */
@@ -154,36 +156,201 @@ export interface MLHealthResponse {
   models?: MLModelStatus[];
 }
 
+interface RetryOptions {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  retryableStatuses: number[];
+}
+
+const DEFAULT_RETRY_OPTIONS: RetryOptions = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryableStatuses: [408, 429, 500, 502, 503, 504],
+};
+
+interface CacheOptions {
+  enabled: boolean;
+  ttlMs: number;
+  useRedis: boolean;
+}
+
+const DEFAULT_CACHE_OPTIONS: CacheOptions = {
+  enabled: true,
+  ttlMs: 3600000, // 1 hour
+  useRedis: false,
+};
+
 @Injectable()
-export class MlServiceClient {
+export class MlServiceClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MlServiceClient.name);
   private readonly baseUrl: string;
   private readonly timeout: number;
   private readonly enabled: boolean;
+  private readonly retryOptions: RetryOptions;
+  private readonly cacheOptions: CacheOptions;
+  private serviceAvailable: boolean | null = null;
+  private lastHealthCheck: number = 0;
+  private readonly healthCheckInterval = 60000; // 1 minute
+  private cache: Keyv | null = null;
 
   constructor(private configService: ConfigService) {
     this.baseUrl = this.configService.get<string>('mlService.baseUrl') || 'http://localhost:4200';
     this.timeout = this.configService.get<number>('mlService.timeout') || 30000;
     this.enabled = this.configService.get<boolean>('mlService.enabled') ?? true;
+    this.retryOptions = {
+      maxRetries:
+        this.configService.get<number>('mlService.maxRetries') || DEFAULT_RETRY_OPTIONS.maxRetries,
+      baseDelayMs:
+        this.configService.get<number>('mlService.retryDelayMs') ||
+        DEFAULT_RETRY_OPTIONS.baseDelayMs,
+      maxDelayMs: DEFAULT_RETRY_OPTIONS.maxDelayMs,
+      retryableStatuses: DEFAULT_RETRY_OPTIONS.retryableStatuses,
+    };
+    this.cacheOptions = {
+      enabled:
+        this.configService.get<boolean>('mlService.cacheEnabled') ?? DEFAULT_CACHE_OPTIONS.enabled,
+      ttlMs: this.configService.get<number>('mlService.cacheTtlMs') || DEFAULT_CACHE_OPTIONS.ttlMs,
+      useRedis:
+        this.configService.get<boolean>('mlService.cacheUseRedis') ??
+        DEFAULT_CACHE_OPTIONS.useRedis,
+    };
+  }
+
+  async onModuleInit() {
+    if (this.cacheOptions.enabled) {
+      await this.initializeCache();
+    }
+  }
+
+  async onModuleDestroy() {
+    if (this.cache) {
+      await this.cache.disconnect();
+    }
+  }
+
+  private async initializeCache() {
+    try {
+      if (this.cacheOptions.useRedis) {
+        const redisUrl = this.configService.get<string>('redis.url') || 'redis://localhost:6379';
+        const store = new KeyvRedis(redisUrl);
+        this.cache = new Keyv({ store, namespace: 'ml-cache', ttl: this.cacheOptions.ttlMs });
+        this.logger.log('ML cache initialized with Redis backend');
+      } else {
+        // Use in-memory cache
+        this.cache = new Keyv({ namespace: 'ml-cache', ttl: this.cacheOptions.ttlMs });
+        this.logger.log('ML cache initialized with in-memory backend');
+      }
+
+      this.cache.on('error', err => {
+        this.logger.error(`ML cache error: ${err}`);
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to initialize ML cache, caching disabled: ${error}`);
+      this.cache = null;
+    }
+  }
+
+  /**
+   * Generate a cache key from request data
+   */
+  private generateCacheKey(prefix: string, data: unknown): string {
+    const hash = createHash('sha256').update(JSON.stringify(data)).digest('hex').substring(0, 16);
+    return `${prefix}:${hash}`;
+  }
+
+  /**
+   * Get from cache if available
+   */
+  private async getFromCache<T>(key: string): Promise<T | null> {
+    if (!this.cache || !this.cacheOptions.enabled) {
+      return null;
+    }
+
+    try {
+      const cached = await this.cache.get(key);
+      if (cached) {
+        this.logger.debug(`ML cache hit for key: ${key}`);
+        return cached as T;
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn(`ML cache get error: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Set value in cache
+   */
+  private async setInCache<T>(key: string, value: T, ttl?: number): Promise<void> {
+    if (!this.cache || !this.cacheOptions.enabled) {
+      return;
+    }
+
+    try {
+      await this.cache.set(key, value, ttl || this.cacheOptions.ttlMs);
+      this.logger.debug(`ML cache set for key: ${key}`);
+    } catch (error) {
+      this.logger.warn(`ML cache set error: ${error}`);
+    }
+  }
+
+  /**
+   * Clear a specific cache entry
+   */
+  async clearCache(key: string): Promise<void> {
+    if (this.cache) {
+      await this.cache.delete(key);
+    }
+  }
+
+  /**
+   * Clear all ML cache entries
+   */
+  async clearAllCache(): Promise<void> {
+    if (this.cache) {
+      await this.cache.clear();
+      this.logger.log('ML cache cleared');
+    }
   }
 
   /**
    * Check if ML service is enabled and available
+   * Uses cached status with periodic health checks to avoid hammering the service
    */
   async isAvailable(): Promise<boolean> {
     if (!this.enabled) {
       return false;
     }
 
+    const now = Date.now();
+    if (this.serviceAvailable !== null && now - this.lastHealthCheck < this.healthCheckInterval) {
+      return this.serviceAvailable;
+    }
+
     try {
       const response = await this.fetchWithTimeout('/health', {
         method: 'GET',
       });
-      return response.ok;
+      this.serviceAvailable = response.ok;
+      this.lastHealthCheck = now;
+      return this.serviceAvailable;
     } catch (error) {
       this.logger.warn(`ML service not available: ${error}`);
+      this.serviceAvailable = false;
+      this.lastHealthCheck = now;
       return false;
     }
+  }
+
+  /**
+   * Force a health check, bypassing the cache
+   */
+  async checkHealth(): Promise<boolean> {
+    this.lastHealthCheck = 0;
+    return this.isAvailable();
   }
 
   /**
@@ -208,7 +375,7 @@ export class MlServiceClient {
   }
 
   /**
-   * Evaluate code using CodeBERT model
+   * Evaluate code using CodeBERT model (with caching)
    */
   async evaluateCode(request: MLCodeEvaluationRequest): Promise<MLCodeEvaluationResponse | null> {
     if (!this.enabled) {
@@ -216,8 +383,15 @@ export class MlServiceClient {
       return null;
     }
 
+    // Check cache first
+    const cacheKey = this.generateCacheKey('code-eval', request);
+    const cached = await this.getFromCache<MLCodeEvaluationResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const response = await this.fetchWithTimeout('/api/v1/evaluate/code', {
+      const response = await this.fetchWithRetry('/api/v1/evaluate/code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -229,15 +403,20 @@ export class MlServiceClient {
         return null;
       }
 
-      return await response.json();
+      const result = await response.json();
+
+      // Cache the result
+      await this.setInCache(cacheKey, result);
+
+      return result;
     } catch (error) {
-      this.logger.error(`Code evaluation error: ${error}`);
+      this.logger.error(`Code evaluation error after retries: ${error}`);
       return null;
     }
   }
 
   /**
-   * Evaluate text using BERT model
+   * Evaluate text using BERT model (with caching)
    */
   async evaluateText(request: MLTextEvaluationRequest): Promise<MLTextEvaluationResponse | null> {
     if (!this.enabled) {
@@ -245,8 +424,15 @@ export class MlServiceClient {
       return null;
     }
 
+    // Check cache first
+    const cacheKey = this.generateCacheKey('text-eval', request);
+    const cached = await this.getFromCache<MLTextEvaluationResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const response = await this.fetchWithTimeout('/api/v1/evaluate/text', {
+      const response = await this.fetchWithRetry('/api/v1/evaluate/text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -258,9 +444,14 @@ export class MlServiceClient {
         return null;
       }
 
-      return await response.json();
+      const result = await response.json();
+
+      // Cache the result
+      await this.setInCache(cacheKey, result);
+
+      return result;
     } catch (error) {
-      this.logger.error(`Text evaluation error: ${error}`);
+      this.logger.error(`Text evaluation error after retries: ${error}`);
       return null;
     }
   }
@@ -277,7 +468,7 @@ export class MlServiceClient {
     }
 
     try {
-      const response = await this.fetchWithTimeout('/api/v1/evaluate/code/batch', {
+      const response = await this.fetchWithRetry('/api/v1/evaluate/code/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requests),
@@ -291,7 +482,7 @@ export class MlServiceClient {
 
       return await response.json();
     } catch (error) {
-      this.logger.error(`Batch code evaluation error: ${error}`);
+      this.logger.error(`Batch code evaluation error after retries: ${error}`);
       return null;
     }
   }
@@ -308,7 +499,7 @@ export class MlServiceClient {
     }
 
     try {
-      const response = await this.fetchWithTimeout('/api/v1/evaluate/text/batch', {
+      const response = await this.fetchWithRetry('/api/v1/evaluate/text/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requests),
@@ -322,13 +513,13 @@ export class MlServiceClient {
 
       return await response.json();
     } catch (error) {
-      this.logger.error(`Batch text evaluation error: ${error}`);
+      this.logger.error(`Batch text evaluation error after retries: ${error}`);
       return null;
     }
   }
 
   /**
-   * Find matching candidates for a job using NCF model
+   * Find matching candidates for a job using NCF model (with caching)
    */
   async matchCandidates(
     request: MLCandidateMatchRequest
@@ -338,8 +529,15 @@ export class MlServiceClient {
       return null;
     }
 
+    // Check cache first - use shorter TTL for matching since candidates change
+    const cacheKey = this.generateCacheKey('match-candidates', request);
+    const cached = await this.getFromCache<MLCandidateMatchResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const response = await this.fetchWithTimeout('/api/v1/match/candidates', {
+      const response = await this.fetchWithRetry('/api/v1/match/candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -351,15 +549,20 @@ export class MlServiceClient {
         return null;
       }
 
-      return await response.json();
+      const result = await response.json();
+
+      // Cache with shorter TTL (5 minutes) for matching results
+      await this.setInCache(cacheKey, result, 300000);
+
+      return result;
     } catch (error) {
-      this.logger.error(`Candidate matching error: ${error}`);
+      this.logger.error(`Candidate matching error after retries: ${error}`);
       return null;
     }
   }
 
   /**
-   * Find matching jobs for a candidate using NCF model
+   * Find matching jobs for a candidate using NCF model (with caching)
    */
   async matchJobs(request: MLJobMatchRequest): Promise<MLJobMatchResponse | null> {
     if (!this.enabled) {
@@ -367,8 +570,15 @@ export class MlServiceClient {
       return null;
     }
 
+    // Check cache first
+    const cacheKey = this.generateCacheKey('match-jobs', request);
+    const cached = await this.getFromCache<MLJobMatchResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const response = await this.fetchWithTimeout('/api/v1/match/jobs', {
+      const response = await this.fetchWithRetry('/api/v1/match/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -380,9 +590,14 @@ export class MlServiceClient {
         return null;
       }
 
-      return await response.json();
+      const result = await response.json();
+
+      // Cache with shorter TTL (5 minutes) for matching results
+      await this.setInCache(cacheKey, result, 300000);
+
+      return result;
     } catch (error) {
-      this.logger.error(`Job matching error: ${error}`);
+      this.logger.error(`Job matching error after retries: ${error}`);
       return null;
     }
   }
@@ -403,5 +618,77 @@ export class MlServiceClient {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * Fetch with timeout and retry logic using exponential backoff
+   */
+  private async fetchWithRetry(
+    path: string,
+    options: RequestInit,
+    customRetryOptions?: Partial<RetryOptions>
+  ): Promise<Response> {
+    const retryOpts = { ...this.retryOptions, ...customRetryOptions };
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= retryOpts.maxRetries; attempt++) {
+      try {
+        const response = await this.fetchWithTimeout(path, options);
+
+        // Check if we should retry based on status code
+        if (!response.ok && retryOpts.retryableStatuses.includes(response.status)) {
+          if (attempt < retryOpts.maxRetries) {
+            const delay = this.calculateBackoffDelay(attempt, retryOpts);
+            this.logger.warn(
+              `ML service returned ${response.status} on ${path}, retrying in ${delay}ms (attempt ${attempt + 1}/${retryOpts.maxRetries})`
+            );
+            await this.sleep(delay);
+            continue;
+          }
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error as Error;
+
+        // Don't retry on abort (timeout) if we've already tried multiple times
+        const isAbortError = error instanceof Error && error.name === 'AbortError';
+        const isNetworkError = error instanceof TypeError;
+
+        if ((isAbortError || isNetworkError) && attempt < retryOpts.maxRetries) {
+          const delay = this.calculateBackoffDelay(attempt, retryOpts);
+          this.logger.warn(
+            `ML service request to ${path} failed: ${error}, retrying in ${delay}ms (attempt ${attempt + 1}/${retryOpts.maxRetries})`
+          );
+          await this.sleep(delay);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    // This shouldn't happen, but just in case
+    throw lastError || new Error('Max retries exceeded');
+  }
+
+  /**
+   * Calculate exponential backoff delay with jitter
+   */
+  private calculateBackoffDelay(attempt: number, options: RetryOptions): number {
+    // Exponential backoff: baseDelay * 2^attempt
+    const exponentialDelay = options.baseDelayMs * Math.pow(2, attempt);
+    // Add jitter (±25%) to prevent thundering herd
+    const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+    const delay = Math.round(exponentialDelay + jitter);
+    // Cap at maxDelay
+    return Math.min(delay, options.maxDelayMs);
+  }
+
+  /**
+   * Sleep helper for retry delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
