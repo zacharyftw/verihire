@@ -53,6 +53,12 @@ export default () => ({
     baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   },
 
+  mlService: {
+    baseUrl: process.env.ML_SERVICE_URL || 'http://localhost:4200',
+    timeout: parseInt(process.env.ML_SERVICE_TIMEOUT || '30000', 10),
+    enabled: process.env.ML_SERVICE_ENABLED !== 'false',
+  },
+
   cors: {
     origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
   },

@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  MlServiceClient,
+  MLCodeEvaluationResponse,
+  MLTextEvaluationResponse,
+} from './ml-service.client';
 
 export interface EvaluationCriteria {
   name: string;
@@ -60,7 +65,10 @@ export class AiEvaluationService {
   private readonly model: string;
   private readonly baseUrl: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private mlServiceClient: MlServiceClient
+  ) {
     this.apiKey = this.configService.get<string>('openai.apiKey') || '';
     this.model = this.configService.get<string>('openai.model') || 'gpt-4o';
     this.baseUrl = this.configService.get<string>('openai.baseUrl') || 'https://api.openai.com/v1';
@@ -68,6 +76,7 @@ export class AiEvaluationService {
 
   /**
    * Evaluate a code submission using AI
+   * Uses CodeBERT from ML service for scoring, OpenAI for detailed feedback
    */
   async evaluateCode(params: {
     code: string;
@@ -80,19 +89,42 @@ export class AiEvaluationService {
   }): Promise<EvaluationResult> {
     const startTime = Date.now();
 
-    // Perform static analysis first
-    const staticAnalysis = this.performStaticAnalysis(params.code, params.language);
+    // Try to get ML service evaluation first (CodeBERT)
+    const mlEvaluation = await this.mlServiceClient.evaluateCode({
+      code: params.code,
+      language: params.language,
+      challenge_description: params.challengeDescription,
+      test_cases: params.testCases?.map(tc => ({
+        input: tc.input,
+        expected_output: tc.expectedOutput,
+      })),
+    });
+
+    // Perform local static analysis
+    const staticAnalysis = mlEvaluation
+      ? this.convertMlToStaticAnalysis(mlEvaluation)
+      : this.performStaticAnalysis(params.code, params.language);
 
     // Run test cases if provided
     const testResults = params.testCases
       ? await this.runTestCases(params.code, params.language, params.testCases)
       : undefined;
 
-    // Generate AI evaluation
-    const aiEvaluation = await this.getAiEvaluation(params);
+    // If ML service provided evaluation, combine with OpenAI feedback
+    let aiEvaluation: Omit<EvaluationResult, 'staticAnalysis' | 'testResults'>;
+
+    if (mlEvaluation) {
+      // Use ML scores, get OpenAI for detailed feedback
+      aiEvaluation = await this.combineMLWithOpenAI(params, mlEvaluation);
+    } else {
+      // Fall back to pure OpenAI evaluation
+      aiEvaluation = await this.getAiEvaluation(params);
+    }
 
     const processingTime = Date.now() - startTime;
-    this.logger.log(`Evaluation completed in ${processingTime}ms`);
+    this.logger.log(
+      `Evaluation completed in ${processingTime}ms (ML: ${mlEvaluation ? 'yes' : 'no'})`
+    );
 
     return {
       ...aiEvaluation,
@@ -103,6 +135,7 @@ export class AiEvaluationService {
 
   /**
    * Evaluate a written/essay response using AI
+   * Uses BERT from ML service for scoring, OpenAI for detailed feedback
    */
   async evaluateWrittenResponse(params: {
     response: string;
@@ -111,9 +144,22 @@ export class AiEvaluationService {
     requirements: string[];
     evaluationCriteria: EvaluationCriteria[];
   }): Promise<EvaluationResult> {
+    // Try ML service first (BERT)
+    const mlEvaluation = await this.mlServiceClient.evaluateText({
+      text: params.response,
+      evaluation_type: 'written_response',
+      question: params.challengeDescription,
+      expected_topics: params.requirements,
+    });
+
+    if (mlEvaluation) {
+      // Combine ML scores with OpenAI feedback
+      return this.combineTextMLWithOpenAI(params, mlEvaluation);
+    }
+
+    // Fall back to pure OpenAI evaluation
     const systemPrompt = this.buildWrittenEvaluationPrompt(params.evaluationCriteria);
     const userPrompt = this.buildWrittenUserPrompt(params);
-
     return this.callOpenAI(systemPrompt, userPrompt, params.evaluationCriteria);
   }
 
@@ -579,5 +625,165 @@ Please evaluate this written submission based on the criteria provided.`;
       message: 'Mock test execution',
       executionTimeMs: Math.round(Math.random() * 100),
     }));
+  }
+
+  /**
+   * Convert ML service evaluation to static analysis format
+   */
+  private convertMlToStaticAnalysis(mlEval: MLCodeEvaluationResponse): StaticAnalysisResult {
+    return {
+      complexity: Math.round((1 - mlEval.metrics.complexity_score) * 20) + 1, // Convert 0-1 score to complexity number
+      linesOfCode: mlEval.issues.length > 0 ? mlEval.issues.length * 10 : 50, // Estimate
+      issues: mlEval.issues.map(issue => ({
+        type: issue.severity,
+        message: issue.message,
+        line: issue.line,
+      })),
+    };
+  }
+
+  /**
+   * Combine ML service code evaluation with OpenAI feedback
+   */
+  private async combineMLWithOpenAI(
+    params: {
+      code: string;
+      language: string;
+      challengeTitle: string;
+      challengeDescription: string;
+      requirements: string[];
+      evaluationCriteria: EvaluationCriteria[];
+    },
+    mlEval: MLCodeEvaluationResponse
+  ): Promise<Omit<EvaluationResult, 'staticAnalysis' | 'testResults'>> {
+    // Map ML metrics to criteria scores
+    const criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }> =
+      {};
+
+    for (const c of params.evaluationCriteria) {
+      let score: number;
+      let feedback: string;
+
+      switch (c.name) {
+        case 'correctness':
+          score = mlEval.overall_score;
+          feedback = `Overall correctness score from ML analysis.`;
+          break;
+        case 'code_quality':
+          score = mlEval.metrics.readability_score * 100;
+          feedback = `Readability: ${(mlEval.metrics.readability_score * 100).toFixed(1)}%`;
+          break;
+        case 'efficiency':
+          score = mlEval.metrics.complexity_score * 100;
+          feedback = `Complexity score: ${(mlEval.metrics.complexity_score * 100).toFixed(1)}% (higher is less complex)`;
+          break;
+        case 'best_practices':
+          score = mlEval.metrics.best_practices_score * 100;
+          feedback = `Best practices adherence: ${(mlEval.metrics.best_practices_score * 100).toFixed(1)}%`;
+          break;
+        case 'error_handling':
+          score = mlEval.metrics.security_score * 100;
+          feedback = `Security and error handling: ${(mlEval.metrics.security_score * 100).toFixed(1)}%`;
+          break;
+        default:
+          score = mlEval.overall_score;
+          feedback = 'Score from ML analysis';
+      }
+
+      criteriaScores[c.name] = {
+        score: Math.round(score),
+        maxScore: c.maxScore,
+        feedback,
+      };
+    }
+
+    // Get detailed feedback from OpenAI (optional - can be disabled for speed)
+    let detailedFeedback = mlEval.strengths.join('. ');
+    if (this.apiKey && params.code.length < 5000) {
+      try {
+        const openAIResult = await this.getAiEvaluation(params);
+        detailedFeedback = openAIResult.feedback;
+      } catch (error) {
+        this.logger.warn('OpenAI feedback failed, using ML feedback only');
+      }
+    }
+
+    return {
+      overallScore: Math.round(mlEval.overall_score * 100) / 100,
+      criteriaScores,
+      feedback: detailedFeedback,
+      suggestions: mlEval.suggestions,
+      confidence: 0.85, // ML models have good confidence
+    };
+  }
+
+  /**
+   * Combine ML service text evaluation with OpenAI feedback
+   */
+  private async combineTextMLWithOpenAI(
+    params: {
+      response: string;
+      challengeTitle: string;
+      challengeDescription: string;
+      requirements: string[];
+      evaluationCriteria: EvaluationCriteria[];
+    },
+    mlEval: MLTextEvaluationResponse
+  ): Promise<EvaluationResult> {
+    // Map ML metrics to criteria scores
+    const criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }> =
+      {};
+
+    for (const c of params.evaluationCriteria) {
+      let score: number;
+      let feedback: string;
+
+      switch (c.name) {
+        case 'understanding':
+          score = mlEval.metrics.depth_score * 100;
+          feedback = `Depth of understanding: ${(mlEval.metrics.depth_score * 100).toFixed(1)}%`;
+          break;
+        case 'completeness':
+          score = mlEval.metrics.relevance_score * 100;
+          feedback = `Topic coverage: ${(mlEval.metrics.relevance_score * 100).toFixed(1)}%`;
+          break;
+        case 'clarity':
+          score = mlEval.metrics.clarity_score * 100;
+          feedback = `Clarity of expression: ${(mlEval.metrics.clarity_score * 100).toFixed(1)}%`;
+          break;
+        case 'accuracy':
+          score = mlEval.metrics.coherence_score * 100;
+          feedback = `Logical coherence: ${(mlEval.metrics.coherence_score * 100).toFixed(1)}%`;
+          break;
+        case 'examples':
+          score = mlEval.metrics.originality_score * 100;
+          feedback = `Originality and examples: ${(mlEval.metrics.originality_score * 100).toFixed(1)}%`;
+          break;
+        default:
+          score = mlEval.overall_score;
+          feedback = 'Score from ML analysis';
+      }
+
+      criteriaScores[c.name] = {
+        score: Math.round(score),
+        maxScore: c.maxScore,
+        feedback,
+      };
+    }
+
+    // Build feedback from ML results
+    const feedbackParts = [
+      `Word count: ${mlEval.word_count}`,
+      `Topics covered: ${mlEval.topics_covered.join(', ') || 'N/A'}`,
+      `Key points: ${mlEval.key_points.slice(0, 3).join('; ') || 'N/A'}`,
+    ];
+
+    return {
+      overallScore: Math.round(mlEval.overall_score * 100) / 100,
+      criteriaScores,
+      feedback: feedbackParts.join('. '),
+      suggestions: mlEval.suggestions,
+      confidence: 0.85,
+    };
   }
 }
