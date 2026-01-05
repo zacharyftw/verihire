@@ -4,8 +4,10 @@
   "private": true,
   "exports": {
     "./eslint": "./eslint/index.js",
+    "./eslint/*": "./eslint/*.js",
     "./prettier": "./prettier/index.js",
-    "./typescript": "./typescript/tsconfig.base.json"
+    "./typescript": "./typescript/tsconfig.base.json",
+    "./typescript/*": "./typescript/*"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",

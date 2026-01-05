@@ -33,7 +33,7 @@ export function truncate(text: string, maxLength: number, suffix = '...'): strin
  * Convert camelCase to snake_case
  */
 export function camelToSnake(text: string): string {
-  return text.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  return text.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
 /**
@@ -185,7 +185,7 @@ export function omit<T extends Record<string, unknown>, K extends keyof T>(
   keys: K[]
 ): Omit<T, K> {
   const result = { ...obj };
-  keys.forEach((key) => delete result[key]);
+  keys.forEach(key => delete result[key]);
   return result;
 }
 
@@ -233,7 +233,9 @@ export function shuffle<T>(arr: T[]): T[] {
   const result = [...arr];
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
+    const temp = result[i] as T;
+    result[i] = result[j] as T;
+    result[j] = temp;
   }
   return result;
 }
@@ -290,7 +292,7 @@ export function percentage(value: number, total: number): number {
  * Sleep for a specified duration
  */
 export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
