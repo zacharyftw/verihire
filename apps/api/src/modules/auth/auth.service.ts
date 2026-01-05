@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { prisma, User } from '@verihire/database';
@@ -15,7 +11,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -137,7 +133,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       userType: user.userType,
-      roles: roles.map((r) => r.role),
+      roles: roles.map((r: { role: string }) => r.role),
       sessionId,
     };
 
@@ -163,7 +159,7 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         userType: user.userType,
         mfaEnabled: user.mfaEnabled,
-        roles: roles.map((r) => r.role),
+        roles: roles.map((r: { role: string }) => r.role),
       },
       tokens: {
         accessToken,
