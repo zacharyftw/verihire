@@ -27,7 +27,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "migrate:reset": "prisma migrate reset",
     "studio": "prisma studio",
-    "seed": "tsx src/seed.ts",
+    "seed": "tsx prisma/seed.ts",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
@@ -35,7 +35,9 @@
     "@prisma/client": "^5.9.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
     "@verihire/config": "workspace:*",
+    "bcrypt": "^5.1.1",
     "prisma": "^5.9.0",
     "tsup": "^8.0.0",
     "tsx": "^4.7.0",

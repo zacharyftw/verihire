@@ -241,9 +241,15 @@ importers:
         specifier: ^5.9.0
         version: 5.22.0(prisma@5.22.0)
     devDependencies:
+      '@types/bcrypt':
+        specifier: ^5.0.2
+        version: 5.0.2
       '@verihire/config':
         specifier: workspace:*
         version: link:../config
+      bcrypt:
+        specifier: ^5.1.1
+        version: 5.1.1
       prisma:
         specifier: ^5.9.0
         version: 5.22.0
