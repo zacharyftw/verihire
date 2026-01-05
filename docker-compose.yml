@@ -83,11 +83,45 @@ services:
       - '1025:1025' # SMTP
       - '8025:8025' # Web UI
 
+  # ML Service for AI evaluation and candidate matching
+  ml:
+    build:
+      context: ./apps/ml
+      dockerfile: Dockerfile
+    container_name: verihire-ml
+    restart: unless-stopped
+    ports:
+      - '4200:4200'
+    environment:
+      - HOST=0.0.0.0
+      - PORT=4200
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-verihire_dev}@redis:6379
+      - MODEL_CACHE_DIR=/tmp/verihire-models
+      - DEVICE=cpu
+      - LOG_LEVEL=INFO
+    volumes:
+      - ml_model_cache:/tmp/verihire-models
+    depends_on:
+      - redis
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import httpx; httpx.get('http://localhost:4200/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s # Models take time to load
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G # ML models need memory
+        reservations:
+          memory: 2G
+
 volumes:
   postgres_data:
   redis_data:
   elasticsearch_data:
   minio_data:
+  ml_model_cache:
 
 networks:
   default:

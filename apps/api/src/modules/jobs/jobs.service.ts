@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   prisma,
@@ -20,9 +21,17 @@ import {
   ShortlistCandidateDto,
   UpdateShortlistDto,
 } from './dto/job.dto';
+import {
+  MlServiceClient,
+  MLCandidateProfile,
+  MLJobProfile,
+} from '../evaluations/ml-service.client';
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
+  constructor(private mlServiceClient: MlServiceClient) {}
   // ===== Job CRUD =====
 
   async createJob(recruiterId: string, data: CreateJobDto) {
@@ -597,17 +606,20 @@ export class JobsService {
   async findMatchingCandidates(
     jobId: string,
     recruiterId: string,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number; useML?: boolean }
   ) {
     await this.getJobForRecruiter(jobId, recruiterId);
 
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
+    const useML = options?.useML ?? true;
 
     // Get job's required skills
     const jobSkills = await prisma.jobSkill.findMany({
       where: { jobId },
-      select: { skillId: true, minScore: true, minLevel: true, required: true },
+      include: {
+        skill: { select: { id: true, name: true } },
+      },
     });
 
     if (jobSkills.length === 0) {
@@ -618,6 +630,12 @@ export class JobsService {
       };
     }
 
+    // Get job details for experience requirements
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { experienceYearsMin: true, experienceYearsMax: true },
+    });
+
     const requiredSkillIds = jobSkills.filter(js => js.required).map(js => js.skillId);
 
     // Find candidates with matching skills
@@ -626,11 +644,12 @@ export class JobsService {
         candidateSkills: {
           some: {
             skillId: { in: jobSkills.map(js => js.skillId) },
-            verified: true,
           },
         },
       },
-      include: {
+      select: {
+        id: true,
+        yearsExperience: true,
         user: {
           select: {
             firstName: true,
@@ -639,23 +658,165 @@ export class JobsService {
           },
         },
         candidateSkills: {
-          where: {
-            skillId: { in: jobSkills.map(js => js.skillId) },
-          },
-          include: {
+          select: {
+            skillId: true,
+            level: true,
+            score: true,
+            verified: true,
             skill: {
               select: { id: true, name: true, slug: true },
             },
           },
         },
       },
-      take: limit * 2, // Fetch more to filter
+      take: limit * 3, // Fetch more for ML scoring
       skip: offset,
     });
 
+    // Try ML-based matching first
+    if (useML && candidates.length > 0) {
+      const mlResult = await this.matchCandidatesWithNCF(jobId, job, jobSkills, candidates, limit);
+      if (mlResult) {
+        return mlResult;
+      }
+    }
+
+    // Fallback to rule-based matching
+    return this.matchCandidatesRuleBased(jobSkills, candidates, requiredSkillIds, limit, offset);
+  }
+
+  /**
+   * Use NCF model for candidate matching
+   */
+  private async matchCandidatesWithNCF(
+    jobId: string,
+    job: { experienceYearsMin: number | null; experienceYearsMax: number | null } | null,
+    jobSkills: Array<{
+      skillId: string;
+      minScore: number | null;
+      minLevel: string | null;
+      required: boolean;
+      skill: { id: string; name: string };
+    }>,
+    candidates: Array<{
+      id: string;
+      yearsExperience: number;
+      user: { firstName: string | null; lastName: string | null; avatarUrl: string | null };
+      candidateSkills: Array<{
+        skillId: string;
+        level: string | null;
+        score: unknown;
+        verified: boolean;
+        skill: { id: string; name: string; slug: string };
+      }>;
+    }>,
+    limit: number
+  ) {
+    try {
+      // Convert to ML service format
+      const mlJobProfile: MLJobProfile = {
+        job_id: jobId,
+        required_skills: jobSkills.map(js => ({
+          skill_id: js.skillId,
+          skill_name: js.skill.name,
+          required_level: this.skillLevelToNumber(js.minLevel),
+          weight: js.required ? 1.0 : 0.5,
+          is_required: js.required,
+        })),
+        experience_min: job?.experienceYearsMin ?? undefined,
+        experience_max: job?.experienceYearsMax ?? undefined,
+      };
+
+      const mlCandidates: MLCandidateProfile[] = candidates.map(c => ({
+        candidate_id: c.id,
+        skills: c.candidateSkills.map(cs => ({
+          skill_id: cs.skillId,
+          skill_name: cs.skill.name,
+          proficiency_level: this.skillLevelToNumber(cs.level),
+          verified: cs.verified,
+          certification_score: cs.score ? Number(cs.score) : undefined,
+        })),
+        experience_years: c.yearsExperience ?? undefined,
+      }));
+
+      const mlResult = await this.mlServiceClient.matchCandidates({
+        job: mlJobProfile,
+        candidates: mlCandidates,
+        top_k: limit,
+        min_score: 0.1,
+      });
+
+      if (!mlResult) {
+        this.logger.debug('ML service returned no results, falling back to rule-based');
+        return null;
+      }
+
+      this.logger.log(
+        `NCF matching found ${mlResult.matches.length} candidates in ${mlResult.processing_time_ms}ms`
+      );
+
+      // Map ML results back to candidate data
+      const candidateMap = new Map(candidates.map(c => [c.id, c]));
+
+      const enrichedMatches = mlResult.matches.map(match => {
+        const candidate = candidateMap.get(match.candidate_id);
+        return {
+          ...candidate,
+          matchScore: Math.round(match.overall_score * 100) / 10, // Convert 0-1 to 0-10 scale
+          skillMatchScore: Math.round(match.skill_match_score * 100) / 100,
+          experienceMatchScore: Math.round(match.experience_match_score * 100) / 100,
+          ncfScore: Math.round(match.ncf_score * 100) / 100,
+          skillGaps: match.skill_gaps,
+          skillStrengths: match.skill_strengths,
+          matchedSkillsCount: candidate?.candidateSkills.length ?? 0,
+          totalRequiredSkills: jobSkills.filter(js => js.required).length,
+          hasAllRequired: match.skill_gaps.filter(g => !g.includes('levels')).length === 0,
+          mlPowered: true,
+        };
+      });
+
+      return {
+        data: enrichedMatches,
+        meta: {
+          total: mlResult.total_candidates,
+          limit,
+          offset: 0,
+          hasMore: mlResult.matches.length < mlResult.total_candidates,
+          mlProcessingTimeMs: mlResult.processing_time_ms,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`NCF matching failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fallback rule-based candidate matching
+   */
+  private matchCandidatesRuleBased(
+    jobSkills: Array<{
+      skillId: string;
+      minScore: number | null;
+      required: boolean;
+      skill: { id: string; name: string };
+    }>,
+    candidates: Array<{
+      id: string;
+      user: { firstName: string | null; lastName: string | null; avatarUrl: string | null };
+      candidateSkills: Array<{
+        skillId: string;
+        score: unknown;
+        verified: boolean;
+        skill: { id: string; name: string; slug: string };
+      }>;
+    }>,
+    requiredSkillIds: string[],
+    limit: number,
+    offset: number
+  ) {
     // Score candidates based on skill match
-    type CandidateWithSkills = (typeof candidates)[0];
-    const scoredCandidates = candidates.map((candidate: CandidateWithSkills) => {
+    const scoredCandidates = candidates.map(candidate => {
       let matchScore = 0;
       let matchedSkills = 0;
       let missingRequired = 0;
@@ -691,6 +852,7 @@ export class JobsService {
         matchedSkillsCount: matchedSkills,
         totalRequiredSkills: requiredSkillIds.length,
         hasAllRequired: missingRequired === 0,
+        mlPowered: false,
       };
     });
 
@@ -709,6 +871,26 @@ export class JobsService {
         hasMore: candidates.length > limit,
       },
     };
+  }
+
+  /**
+   * Convert skill level enum to numeric value
+   */
+  private skillLevelToNumber(level: string | null): number {
+    switch (level) {
+      case 'BEGINNER':
+        return 1;
+      case 'INTERMEDIATE':
+        return 2;
+      case 'ADVANCED':
+        return 3;
+      case 'EXPERT':
+        return 4;
+      case 'MASTER':
+        return 5;
+      default:
+        return 2; // Default to intermediate
+    }
   }
 
   // ===== Helper methods =====
