@@ -40,6 +40,12 @@ importers:
 
   apps/api:
     dependencies:
+      '@keyv/redis':
+        specifier: ^5.1.5
+        version: 5.1.5(keyv@5.5.5)
+      '@nestjs/cache-manager':
+        specifier: ^3.1.0
+        version: 3.1.0(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2))(cache-manager@7.2.7)(keyv@5.5.5)(rxjs@7.8.2)
       '@nestjs/common':
         specifier: ^10.3.0
         version: 10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -76,6 +82,9 @@ importers:
       bcrypt:
         specifier: ^5.1.1
         version: 5.1.1
+      cache-manager:
+        specifier: ^7.2.7
+        version: 7.2.7
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -91,6 +100,9 @@ importers:
       ioredis:
         specifier: ^5.3.2
         version: 5.9.0
+      keyv:
+        specifier: ^5.5.5
+        version: 5.5.5
       otplib:
         specifier: ^12.0.1
         version: 12.0.1
@@ -610,6 +622,12 @@ packages:
     resolution:
       {
         integrity: sha512-k7vvKPbf7J2fZ5klGRD9AeKfUvojuZIQ3BT5u7Jfv+puwXkUBUT5PVyMDfJZpy30CBDXGMgw7fguK/lpOMBvgw==,
+      }
+
+  '@cacheable/utils@2.3.3':
+    resolution:
+      {
+        integrity: sha512-JsXDL70gQ+1Vc2W/KUFfkAJzgb4puKwwKehNLuB+HrNKWf91O736kGfxn4KujXCCSuh6mRRL4XEB0PkAFjWS0A==,
       }
 
   '@changesets/apply-release-plan@7.0.14':
@@ -1538,6 +1556,21 @@ packages:
         integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==,
       }
 
+  '@keyv/redis@5.1.5':
+    resolution:
+      {
+        integrity: sha512-8tD98mQoZTHHHFG7bcI2T4gkvAL9YsBI7TqCW4sXbx33WmAaPQ+JofxdN+rCu5LKxiboapfS8swZWJ7Tl/XbQg==,
+      }
+    engines: { node: '>= 18' }
+    peerDependencies:
+      keyv: ^5.5.5
+
+  '@keyv/serialize@1.1.1':
+    resolution:
+      {
+        integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==,
+      }
+
   '@ljharb/through@2.3.14':
     resolution:
       {
@@ -1576,6 +1609,18 @@ packages:
       {
         integrity: sha512-4aErSrCR/On/e5G2hDP0wjooqDdauzEbIq8hIkIe5pXV0rtWJZvdCEKL0ykZxex+IxIwBp0eGeV48hQN07dXtw==,
       }
+
+  '@nestjs/cache-manager@3.1.0':
+    resolution:
+      {
+        integrity: sha512-pEIqYZrBcE8UdkJmZRduurvoUfdU+3kRPeO1R2muiMbZnRuqlki5klFFNllO9LyYWzrx98bd1j0PSPKSJk1Wbw==,
+      }
+    peerDependencies:
+      '@nestjs/common': ^9.0.0 || ^10.0.0 || ^11.0.0
+      '@nestjs/core': ^9.0.0 || ^10.0.0 || ^11.0.0
+      cache-manager: '>=6'
+      keyv: '>=5'
+      rxjs: ^7.8.1
 
   '@nestjs/cli@10.4.9':
     resolution:
@@ -1948,6 +1993,13 @@ packages:
       {
         integrity: sha512-pHhpQdr1UPFpt+zFfnPazhulaZYCUqeIcPpJViYoq9R+D/yw4fjE+CtnsnKzPYm0ddUbeXUzjGVGIRVgPDCk4Q==,
       }
+
+  '@redis/client@5.10.0':
+    resolution:
+      {
+        integrity: sha512-JXmM4XCoso6C75Mr3lhKA3eNxSzkYi3nCzxDIKY+YOszYsJjuKbFgVtguVPbLMOttN4iu2fXoc2BGhdnYhIOxA==,
+      }
+    engines: { node: '>= 18' }
 
   '@rollup/rollup-android-arm-eabi@4.55.1':
     resolution:
@@ -3207,6 +3259,12 @@ packages:
         integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==,
       }
     engines: { node: '>=8' }
+
+  cache-manager@7.2.7:
+    resolution:
+      {
+        integrity: sha512-TKeeb9nSybk1e9E5yAiPVJ6YKdX9FYhwqqy8fBfVKAFVTJYZUNmeIvwjURW6+UikNsO6l2ta27thYgo/oumDsw==,
+      }
 
   call-bind-apply-helpers@1.0.2:
     resolution:
@@ -4906,6 +4964,13 @@ packages:
         integrity: sha512-8Rf9Y83NBReMnx0gFzA8JImQACstCYWUplepDa9xprwwtmgEZUF0h/i5xSA625zB/I37EtrswSST6OXxwaaIJQ==,
       }
 
+  hashery@1.4.0:
+    resolution:
+      {
+        integrity: sha512-Wn2i1In6XFxl8Az55kkgnFRiAlIAushzh26PTjL2AKtQcEfXrcLa7Hn5QOWGZEf3LU057P9TwwZjFyxfS1VuvQ==,
+      }
+    engines: { node: '>=20' }
+
   hasown@2.0.2:
     resolution:
       {
@@ -4919,6 +4984,12 @@ packages:
         integrity: sha512-ZRiwvN089JfMXokizgqEPXsl2Guk094yExfoDXR0cBYWxtBbaSww/w+vT4WEJsBW2iTUi1GgZ6swmoug3Oy4Xw==,
       }
     engines: { node: '>=16.0.0' }
+
+  hookified@1.15.0:
+    resolution:
+      {
+        integrity: sha512-51w+ZZGt7Zw5q7rM3nC4t3aLn/xvKDETsXqMczndvwyVQhAHfUmUuFBRFcos8Iyebtk7OAE9dL26wFNzZVVOkw==,
+      }
 
   html-escaper@2.0.2:
     resolution:
@@ -5826,6 +5897,12 @@ packages:
     resolution:
       {
         integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==,
+      }
+
+  keyv@5.5.5:
+    resolution:
+      {
+        integrity: sha512-FA5LmZVF1VziNc0bIdCSA1IoSVnDCqE8HJIZZv2/W8YmoAM50+tnUgJR/gQZwEeIMleuIOnRnHA/UaZRNeV4iQ==,
       }
 
   kleur@3.0.3:
@@ -9044,6 +9121,11 @@ snapshots:
 
   '@borewit/text-codec@0.2.1': {}
 
+  '@cacheable/utils@2.3.3':
+    dependencies:
+      hashery: 1.4.0
+      keyv: 5.5.5
+
   '@changesets/apply-release-plan@7.0.14':
     dependencies:
       '@changesets/config': 3.1.2
@@ -9706,6 +9788,15 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@keyv/redis@5.1.5(keyv@5.5.5)':
+    dependencies:
+      '@redis/client': 5.10.0
+      cluster-key-slot: 1.1.2
+      hookified: 1.15.0
+      keyv: 5.5.5
+
+  '@keyv/serialize@1.1.1': {}
+
   '@ljharb/through@2.3.14':
     dependencies:
       call-bind: 1.0.8
@@ -9744,6 +9835,14 @@ snapshots:
       - supports-color
 
   '@microsoft/tsdoc@0.15.1': {}
+
+  '@nestjs/cache-manager@3.1.0(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2))(cache-manager@7.2.7)(keyv@5.5.5)(rxjs@7.8.2)':
+    dependencies:
+      '@nestjs/common': 10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      cache-manager: 7.2.7
+      keyv: 5.5.5
+      rxjs: 7.8.2
 
   '@nestjs/cli@10.4.9':
     dependencies:
@@ -9998,6 +10097,10 @@ snapshots:
   '@prisma/get-platform@5.22.0':
     dependencies:
       '@prisma/debug': 5.22.0
+
+  '@redis/client@5.10.0':
+    dependencies:
+      cluster-key-slot: 1.1.2
 
   '@rollup/rollup-android-arm-eabi@4.55.1':
     optional: true
@@ -10816,6 +10919,11 @@ snapshots:
   bytes@3.1.2: {}
 
   cac@6.7.14: {}
+
+  cache-manager@7.2.7:
+    dependencies:
+      '@cacheable/utils': 2.3.3
+      keyv: 5.5.5
 
   call-bind-apply-helpers@1.0.2:
     dependencies:
@@ -11954,11 +12062,17 @@ snapshots:
 
   has-unicode@2.0.1: {}
 
+  hashery@1.4.0:
+    dependencies:
+      hookified: 1.15.0
+
   hasown@2.0.2:
     dependencies:
       function-bind: 1.1.2
 
   helmet@7.2.0: {}
+
+  hookified@1.15.0: {}
 
   html-escaper@2.0.2: {}
 
@@ -12707,6 +12821,10 @@ snapshots:
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
+
+  keyv@5.5.5:
+    dependencies:
+      '@keyv/serialize': 1.1.1
 
   kleur@3.0.3: {}
 
