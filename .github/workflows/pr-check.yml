@@ -1,0 +1,135 @@
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr-title:
+    name: PR Title Convention
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            should start with a lowercase letter.
+
+  size-label:
+    name: PR Size Label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by size
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: '10'
+          s_label: 'size/s'
+          s_max_size: '100'
+          m_label: 'size/m'
+          m_max_size: '500'
+          l_label: 'size/l'
+          l_max_size: '1000'
+          xl_label: 'size/xl'
+          fail_if_xl: 'false'
+          message_if_xl: >
+            This PR is quite large. Consider breaking it into smaller PRs
+            for easier review.
+
+  changed-files:
+    name: Detect Changed Files
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      database: ${{ steps.filter.outputs.database }}
+      packages: ${{ steps.filter.outputs.packages }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+            web:
+              - 'apps/web/**'
+            database:
+              - 'packages/database/**'
+            packages:
+              - 'packages/**'
+            docs:
+              - 'docs/**'
+              - '*.md'
+
+  review-checklist:
+    name: Add Review Checklist
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    steps:
+      - name: Add checklist comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Review Checklist
+            
+            Please ensure the following before merging:
+            
+            ### Code Quality
+            - [ ] Code follows the project's coding standards
+            - [ ] No unnecessary console.log or debug statements
+            - [ ] Error handling is appropriate
+            - [ ] No hardcoded values (use environment variables or constants)
+            
+            ### Testing
+            - [ ] Unit tests added/updated for new functionality
+            - [ ] All existing tests pass
+            - [ ] Edge cases are covered
+            
+            ### Security
+            - [ ] No sensitive data exposed
+            - [ ] Input validation is in place
+            - [ ] Authentication/authorization checks where needed
+            
+            ### Documentation
+            - [ ] Code is self-documenting or has comments where needed
+            - [ ] README updated if necessary
+            - [ ] API documentation updated if endpoints changed
+            
+            ### Database (if applicable)
+            - [ ] Migrations are reversible
+            - [ ] Indexes added for frequently queried fields
+            - [ ] No N+1 query issues
+            `
+            })

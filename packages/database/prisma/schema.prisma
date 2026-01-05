@@ -1,0 +1,908 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// USERS & AUTHENTICATION
+// =============================================================================
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum UserType {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+  LINKEDIN
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique @db.VarChar(255)
+  emailVerified  Boolean   @default(false) @map("email_verified")
+  passwordHash   String?   @map("password_hash") @db.VarChar(255)
+
+  // Profile basics
+  firstName      String?   @map("first_name") @db.VarChar(100)
+  lastName       String?   @map("last_name") @db.VarChar(100)
+  avatarUrl      String?   @map("avatar_url") @db.Text
+
+  // Account status
+  status         UserStatus @default(ACTIVE)
+  userType       UserType   @map("user_type")
+
+  // MFA
+  mfaEnabled          Boolean @default(false) @map("mfa_enabled")
+  mfaSecretEncrypted  String? @map("mfa_secret_encrypted") @db.Text
+
+  // OAuth
+  oauthProvider   OAuthProvider? @map("oauth_provider")
+  oauthProviderId String?        @map("oauth_provider_id") @db.VarChar(255)
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz
+
+  // Relations
+  userRoles         UserRole[]
+  sessions          Session[]
+  mfaBackupCodes    MfaBackupCode[]
+  candidateProfile  CandidateProfile?
+  recruiterProfile  RecruiterProfile?
+  challengeTemplatesCreated ChallengeTemplate[]
+  grantedRoles      UserRole[]  @relation("GrantedBy")
+
+  @@index([email])
+  @@index([status])
+  @@index([userType])
+  @@index([oauthProvider, oauthProviderId])
+  @@map("users")
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @db.VarChar(50)
+  grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz
+  grantedBy String?  @map("granted_by") @db.Uuid
+
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grantedByUser User? @relation("GrantedBy", fields: [grantedBy], references: [id])
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash") @db.VarChar(64)
+  ipAddress String?   @map("ip_address") @db.Inet
+  userAgent String?   @map("user_agent") @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model MfaBackupCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.VarChar(64)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mfa_backup_codes")
+}
+
+// =============================================================================
+// CANDIDATE PROFILES
+// =============================================================================
+
+enum RemotePreference {
+  REMOTE
+  HYBRID
+  ONSITE
+  FLEXIBLE
+}
+
+enum JobSearchStatus {
+  ACTIVE
+  OPEN
+  NOT_LOOKING
+}
+
+model CandidateProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  // Professional info
+  headline       String? @db.VarChar(255)
+  bio            String? @db.Text
+  yearsExperience Int    @default(0) @map("years_experience")
+  currentRole    String? @map("current_role") @db.VarChar(100)
+  currentCompany String? @map("current_company") @db.VarChar(100)
+
+  // Location
+  locationCity        String? @map("location_city") @db.VarChar(100)
+  locationCountry     String? @map("location_country") @db.VarChar(100)
+  remotePreference    RemotePreference? @map("remote_preference")
+
+  // Links
+  linkedinUrl   String? @map("linkedin_url") @db.Text
+  githubUrl     String? @map("github_url") @db.Text
+  portfolioUrl  String? @map("portfolio_url") @db.Text
+  resumeUrl     String? @map("resume_url") @db.Text
+
+  // Preferences
+  jobSearchStatus         JobSearchStatus? @map("job_search_status")
+  preferredSalaryMin      Int?    @map("preferred_salary_min")
+  preferredSalaryMax      Int?    @map("preferred_salary_max")
+  preferredSalaryCurrency String  @default("USD") @map("preferred_salary_currency") @db.VarChar(3)
+
+  // Portfolio settings
+  portfolioPublic Boolean @default(true) @map("portfolio_public")
+  portfolioSlug   String? @unique @map("portfolio_slug") @db.VarChar(100)
+
+  // Stats (denormalized for performance)
+  totalChallengesCompleted Int     @default(0) @map("total_challenges_completed")
+  averageScore             Decimal @default(0) @map("average_score") @db.Decimal(5, 2)
+  certificatesCount        Int     @default(0) @map("certificates_count")
+  reputationScore          Decimal @default(50) @map("reputation_score") @db.Decimal(5, 2)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidateSkills CandidateSkill[]
+  submissions    Submission[]
+  certificates   Certificate[]
+  reviewsGiven   Review[]
+  shortlists     Shortlist[]
+
+  @@index([userId])
+  @@index([jobSearchStatus])
+  @@index([portfolioSlug])
+  @@map("candidate_profiles")
+}
+
+// =============================================================================
+// SKILLS & TAXONOMY
+// =============================================================================
+
+model SkillCategory {
+  id           String @id @default(uuid()) @db.Uuid
+  name         String @db.VarChar(100)
+  slug         String @unique @db.VarChar(100)
+  description  String? @db.Text
+  parentId     String? @map("parent_id") @db.Uuid
+  icon         String? @db.VarChar(50)
+  displayOrder Int    @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  parent    SkillCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  SkillCategory[] @relation("CategoryHierarchy")
+  skills    Skill[]
+
+  @@map("skill_categories")
+}
+
+model Skill {
+  id          String  @id @default(uuid()) @db.Uuid
+  categoryId  String? @map("category_id") @db.Uuid
+  name        String  @db.VarChar(100)
+  slug        String  @unique @db.VarChar(100)
+  description String? @db.Text
+
+  // Metadata (stored as JSON)
+  difficultyLevels Json @default("[\"beginner\", \"intermediate\", \"advanced\", \"expert\"]") @map("difficulty_levels")
+  challengeTypes   Json @default("[\"coding\", \"written\"]") @map("challenge_types")
+
+  // Certification settings
+  certificationEnabled        Boolean @default(true) @map("certification_enabled")
+  certificationValidityMonths Int     @default(24) @map("certification_validity_months")
+  passThreshold               Int     @default(60) @map("pass_threshold")
+
+  // Stats
+  totalCertifications Int      @default(0) @map("total_certifications")
+  averageScore        Decimal? @map("average_score") @db.Decimal(5, 2)
+
+  // Status
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  category           SkillCategory?      @relation(fields: [categoryId], references: [id])
+  candidateSkills    CandidateSkill[]
+  challengeTemplates ChallengeTemplate[]
+  challenges         Challenge[]
+  certificates       Certificate[]
+  jobSkills          JobSkill[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([isActive])
+  @@map("skills")
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model CandidateSkill {
+  id          String   @id @default(uuid()) @db.Uuid
+  candidateId String   @map("candidate_id") @db.Uuid
+  skillId     String   @map("skill_id") @db.Uuid
+
+  // Verification status
+  verified         Boolean   @default(false)
+  verificationDate DateTime? @map("verification_date") @db.Timestamptz
+
+  // Scores
+  score      Decimal?   @db.Decimal(5, 2)
+  percentile Decimal?   @db.Decimal(5, 2)
+  level      SkillLevel?
+
+  // References
+  certificateId String? @map("certificate_id") @db.Uuid
+  challengeId   String? @map("challenge_id") @db.Uuid
+
+  // Validity
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill     Skill            @relation(fields: [skillId], references: [id])
+
+  @@unique([candidateId, skillId])
+  @@index([candidateId])
+  @@index([skillId])
+  @@index([verified])
+  @@index([score(sort: Desc)])
+  @@map("candidate_skills")
+}
+
+// =============================================================================
+// CHALLENGES & SUBMISSIONS
+// =============================================================================
+
+enum ChallengeDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum ChallengeType {
+  CODING
+  DESIGN
+  WRITTEN
+  MIXED
+}
+
+model ChallengeTemplate {
+  id          String @id @default(uuid()) @db.Uuid
+  skillId     String? @map("skill_id") @db.Uuid
+
+  // Template info
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  difficulty  ChallengeDifficulty?
+  type        ChallengeType?
+
+  // Configuration
+  timeLimitMinutes   Int    @default(60) @map("time_limit_minutes")
+  promptTemplate     String @map("prompt_template") @db.Text
+  evaluationCriteria Json   @map("evaluation_criteria")
+  rubric             Json
+
+  // For coding challenges
+  supportedLanguages Json? @map("supported_languages")
+  starterCode        Json? @map("starter_code")
+  testCaseTemplate   Json? @map("test_case_template")
+
+  // Status
+  isActive   Boolean  @default(true) @map("is_active")
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  skill      Skill?      @relation(fields: [skillId], references: [id])
+  creator    User?       @relation(fields: [createdBy], references: [id])
+  challenges Challenge[]
+
+  @@map("challenge_templates")
+}
+
+model Challenge {
+  id         String  @id @default(uuid()) @db.Uuid
+  templateId String? @map("template_id") @db.Uuid
+  skillId    String? @map("skill_id") @db.Uuid
+
+  // Generated content
+  title        String  @db.VarChar(255)
+  description  String  @db.Text
+  requirements Json?
+
+  // For coding
+  testCases   Json? @map("test_cases")
+  starterCode String? @map("starter_code") @db.Text
+
+  // Configuration
+  difficulty         ChallengeDifficulty?
+  type               ChallengeType?
+  timeLimitMinutes   Int? @map("time_limit_minutes")
+  evaluationCriteria Json? @map("evaluation_criteria")
+
+  // Metadata
+  generatedAt     DateTime @default(now()) @map("generated_at") @db.Timestamptz
+  generationModel String?  @map("generation_model") @db.VarChar(50)
+
+  // Stats
+  timesAttempted Int      @default(0) @map("times_attempted")
+  averageScore   Decimal? @map("average_score") @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  template     ChallengeTemplate? @relation(fields: [templateId], references: [id])
+  skill        Skill?             @relation(fields: [skillId], references: [id])
+  submissions  Submission[]
+  certificates Certificate[]
+
+  @@index([skillId])
+  @@index([difficulty])
+  @@index([type])
+  @@map("challenges")
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EVALUATING
+  EVALUATED
+  FAILED
+}
+
+model Submission {
+  id          String @id @default(uuid()) @db.Uuid
+  challengeId String @map("challenge_id") @db.Uuid
+  candidateId String @map("candidate_id") @db.Uuid
+
+  // Submission content
+  content  String? @db.Text
+  language String? @db.VarChar(50)
+  files    Json?
+
+  // Timing
+  startedAt        DateTime? @map("started_at") @db.Timestamptz
+  submittedAt      DateTime? @map("submitted_at") @db.Timestamptz
+  timeSpentSeconds Int?      @map("time_spent_seconds")
+
+  // Status
+  status SubmissionStatus @default(IN_PROGRESS)
+
+  // Scores (denormalized for quick access)
+  aiScore    Decimal? @map("ai_score") @db.Decimal(5, 2)
+  peerScore  Decimal? @map("peer_score") @db.Decimal(5, 2)
+  finalScore Decimal? @map("final_score") @db.Decimal(5, 2)
+  percentile Decimal? @db.Decimal(5, 2)
+
+  // Metadata
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  challenge    Challenge        @relation(fields: [challengeId], references: [id])
+  candidate    CandidateProfile @relation(fields: [candidateId], references: [id])
+  evaluations  Evaluation[]
+  reviews      Review[]
+  certificates Certificate[]
+
+  @@index([challengeId])
+  @@index([candidateId])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("submissions")
+}
+
+// =============================================================================
+// EVALUATIONS & REVIEWS
+// =============================================================================
+
+model Evaluation {
+  id           String @id @default(uuid()) @db.Uuid
+  submissionId String @map("submission_id") @db.Uuid
+
+  // Scores
+  overallScore   Decimal @map("overall_score") @db.Decimal(5, 2)
+  criteriaScores Json    @map("criteria_scores")
+
+  // Analysis
+  staticAnalysis   Json? @map("static_analysis")
+  testResults      Json? @map("test_results")
+  semanticAnalysis Json? @map("semantic_analysis")
+
+  // Feedback
+  feedback    String? @db.Text
+  suggestions Json?
+
+  // Metadata
+  modelVersions    Json?    @map("model_versions")
+  processingTimeMs Int?     @map("processing_time_ms")
+  confidence       Decimal? @db.Decimal(5, 4)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("evaluations")
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ReviewStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  VALIDATED
+  REJECTED
+}
+
+model Review {
+  id           String @id @default(uuid()) @db.Uuid
+  submissionId String @map("submission_id") @db.Uuid
+  reviewerId   String @map("reviewer_id") @db.Uuid
+
+  // Assignment
+  assignedAt DateTime  @default(now()) @map("assigned_at") @db.Timestamptz
+  deadline   DateTime? @db.Timestamptz
+
+  // Review content
+  criteriaScores        Json?
+  overallScore          Decimal?        @map("overall_score") @db.Decimal(5, 2)
+  strengths             String?         @db.Text
+  areasForImprovement   String?         @map("areas_for_improvement") @db.Text
+  suggestions           String?         @db.Text
+  confidenceLevel       ConfidenceLevel? @map("confidence_level")
+
+  // Metadata
+  timeSpentSeconds Int?      @map("time_spent_seconds")
+  submittedAt      DateTime? @map("submitted_at") @db.Timestamptz
+
+  // Quality metrics
+  qualityScore     Decimal? @map("quality_score") @db.Decimal(5, 2)
+  effortScore      Decimal? @map("effort_score") @db.Decimal(5, 2)
+  specificityScore Decimal? @map("specificity_score") @db.Decimal(5, 2)
+  biasDetected     Boolean  @default(false) @map("bias_detected")
+  biasType         String?  @map("bias_type") @db.VarChar(50)
+
+  // Status
+  status ReviewStatus @default(ASSIGNED)
+
+  // Reviewer reputation impact
+  reputationDelta Decimal? @map("reputation_delta") @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  submission Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   CandidateProfile @relation(fields: [reviewerId], references: [id])
+
+  @@index([submissionId])
+  @@index([reviewerId])
+  @@index([status])
+  @@map("reviews")
+}
+
+// =============================================================================
+// CERTIFICATES
+// =============================================================================
+
+model Certificate {
+  id                String  @id @default(uuid()) @db.Uuid
+  certificateNumber String  @unique @map("certificate_number") @db.VarChar(50)
+  version           String  @default("1.0") @db.VarChar(10)
+
+  // References
+  candidateId  String @map("candidate_id") @db.Uuid
+  skillId      String @map("skill_id") @db.Uuid
+  challengeId  String @map("challenge_id") @db.Uuid
+  submissionId String @map("submission_id") @db.Uuid
+
+  // Scores
+  finalScore     Decimal  @map("final_score") @db.Decimal(5, 2)
+  percentile     Decimal? @db.Decimal(5, 2)
+  grade          String   @db.VarChar(5)
+  aiScore        Decimal? @map("ai_score") @db.Decimal(5, 2)
+  peerScore      Decimal? @map("peer_score") @db.Decimal(5, 2)
+  confidence     Decimal? @db.Decimal(5, 4)
+  criteriaScores Json?    @map("criteria_scores")
+
+  // Verification
+  hash              String  @db.VarChar(64)
+  signature         String  @db.Text
+  publicKey         String  @map("public_key") @db.Text
+  blockchainTxId    String? @map("blockchain_tx_id") @db.VarChar(66)
+  blockchainNetwork String? @map("blockchain_network") @db.VarChar(50)
+  blockNumber       BigInt? @map("block_number")
+
+  // Storage
+  ipfsHash        String? @map("ipfs_hash") @db.VarChar(100)
+  pdfUrl          String? @map("pdf_url") @db.Text
+  imageUrl        String? @map("image_url") @db.Text
+  verificationUrl String  @map("verification_url") @db.Text
+
+  // Validity
+  issuedAt         DateTime  @default(now()) @map("issued_at") @db.Timestamptz
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
+  revocationReason String?   @map("revocation_reason") @db.Text
+
+  // Metadata
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  candidate  CandidateProfile @relation(fields: [candidateId], references: [id])
+  skill      Skill            @relation(fields: [skillId], references: [id])
+  challenge  Challenge        @relation(fields: [challengeId], references: [id])
+  submission Submission       @relation(fields: [submissionId], references: [id])
+
+  @@index([candidateId])
+  @@index([skillId])
+  @@index([certificateNumber])
+  @@index([hash])
+  @@index([issuedAt])
+  @@map("certificates")
+}
+
+// =============================================================================
+// COMPANIES & RECRUITERS
+// =============================================================================
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+model Company {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @db.VarChar(255)
+  slug        String  @unique @db.VarChar(100)
+  description String? @db.Text
+  industry    String? @db.VarChar(100)
+  companySize String? @map("company_size") @db.VarChar(50)
+
+  // Branding
+  logoUrl    String? @map("logo_url") @db.Text
+  websiteUrl String? @map("website_url") @db.Text
+
+  // Location
+  headquartersCity    String? @map("headquarters_city") @db.VarChar(100)
+  headquartersCountry String? @map("headquarters_country") @db.VarChar(100)
+
+  // Verification
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz
+  verificationDocuments Json?     @map("verification_documents")
+
+  // Subscription
+  plan          String    @default("free") @db.VarChar(50)
+  planExpiresAt DateTime? @map("plan_expires_at") @db.Timestamptz
+
+  // Settings
+  settings Json @default("{}")
+
+  // Status
+  status CompanyStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  recruiters RecruiterProfile[]
+  jobs       Job[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("companies")
+}
+
+enum RecruiterRole {
+  RECRUITER
+  HIRING_MANAGER
+  ADMIN
+}
+
+model RecruiterProfile {
+  id        String  @id @default(uuid()) @db.Uuid
+  userId    String  @unique @map("user_id") @db.Uuid
+  companyId String? @map("company_id") @db.Uuid
+
+  // Profile
+  title      String? @db.VarChar(100)
+  department String? @db.VarChar(100)
+
+  // Permissions within company
+  role RecruiterRole @default(RECRUITER)
+
+  // Stats
+  totalHires Int @default(0) @map("total_hires")
+  activeJobs Int @default(0) @map("active_jobs")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company    Company?   @relation(fields: [companyId], references: [id])
+  jobs       Job[]
+  shortlists Shortlist[]
+
+  @@index([userId])
+  @@index([companyId])
+  @@map("recruiter_profiles")
+}
+
+// =============================================================================
+// JOBS & HIRING
+// =============================================================================
+
+enum RemotePolicy {
+  REMOTE
+  HYBRID
+  ONSITE
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+  FILLED
+}
+
+model Job {
+  id          String  @id @default(uuid()) @db.Uuid
+  companyId   String? @map("company_id") @db.Uuid
+  recruiterId String? @map("recruiter_id") @db.Uuid
+
+  // Job details
+  title            String  @db.VarChar(255)
+  description      String? @db.Text
+  requirements     String? @db.Text
+  responsibilities String? @db.Text
+
+  // Location
+  locationCity    String?      @map("location_city") @db.VarChar(100)
+  locationCountry String?      @map("location_country") @db.VarChar(100)
+  remotePolicy    RemotePolicy? @map("remote_policy")
+
+  // Compensation
+  salaryMin      Int?   @map("salary_min")
+  salaryMax      Int?   @map("salary_max")
+  salaryCurrency String @default("USD") @map("salary_currency") @db.VarChar(3)
+  salaryPeriod   String @default("yearly") @map("salary_period") @db.VarChar(20)
+
+  // Employment
+  employmentType     EmploymentType? @map("employment_type")
+  experienceLevel    String?         @map("experience_level") @db.VarChar(50)
+  experienceYearsMin Int?            @map("experience_years_min")
+  experienceYearsMax Int?            @map("experience_years_max")
+
+  // Status
+  status      JobStatus @default(DRAFT)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz
+  closesAt    DateTime? @map("closes_at") @db.Timestamptz
+
+  // Stats
+  viewsCount        Int @default(0) @map("views_count")
+  applicationsCount Int @default(0) @map("applications_count")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  company    Company?          @relation(fields: [companyId], references: [id])
+  recruiter  RecruiterProfile? @relation(fields: [recruiterId], references: [id])
+  jobSkills  JobSkill[]
+  shortlists Shortlist[]
+
+  @@index([companyId])
+  @@index([recruiterId])
+  @@index([status])
+  @@index([locationCountry, locationCity])
+  @@map("jobs")
+}
+
+model JobSkill {
+  id       String  @id @default(uuid()) @db.Uuid
+  jobId    String  @map("job_id") @db.Uuid
+  skillId  String  @map("skill_id") @db.Uuid
+
+  minScore  Int        @default(60) @map("min_score")
+  minLevel  SkillLevel? @map("min_level")
+  required  Boolean    @default(true)
+  weight    Decimal    @default(1.0) @db.Decimal(3, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@index([jobId])
+  @@index([skillId])
+  @@map("job_skills")
+}
+
+enum ShortlistStage {
+  SHORTLISTED
+  SCREENING
+  INTERVIEW
+  ASSESSMENT
+  OFFER
+  HIRED
+  REJECTED
+}
+
+model Shortlist {
+  id          String @id @default(uuid()) @db.Uuid
+  recruiterId String @map("recruiter_id") @db.Uuid
+  jobId       String @map("job_id") @db.Uuid
+  candidateId String @map("candidate_id") @db.Uuid
+
+  // Pipeline stage
+  stage          ShortlistStage @default(SHORTLISTED)
+  stageUpdatedAt DateTime       @default(now()) @map("stage_updated_at") @db.Timestamptz
+
+  // Notes
+  notes  String? @db.Text
+  rating Int?
+
+  // History
+  stageHistory Json @default("[]") @map("stage_history")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  recruiter RecruiterProfile @relation(fields: [recruiterId], references: [id])
+  job       Job              @relation(fields: [jobId], references: [id])
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id])
+
+  @@unique([jobId, candidateId])
+  @@index([recruiterId])
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([stage])
+  @@map("shortlists")
+}
+
+// =============================================================================
+// AUDIT & ANALYTICS
+// =============================================================================
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  ERROR
+}
+
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Event info
+  eventType String       @map("event_type") @db.VarChar(50)
+  action    String       @db.VarChar(50)
+  outcome   AuditOutcome @default(SUCCESS)
+
+  // Actor
+  actorId   String? @map("actor_id") @db.Uuid
+  actorType String? @map("actor_type") @db.VarChar(20)
+
+  // Resource
+  resourceType String? @map("resource_type") @db.VarChar(50)
+  resourceId   String? @map("resource_id") @db.Uuid
+
+  // Details
+  details Json @default("{}")
+
+  // Client info
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.Text
+  sessionId String? @map("session_id") @db.Uuid
+  requestId String? @map("request_id") @db.Uuid
+
+  // Timestamp
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AnalyticsEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Event
+  eventName     String  @map("event_name") @db.VarChar(100)
+  eventCategory String? @map("event_category") @db.VarChar(50)
+
+  // User
+  userId    String? @map("user_id") @db.Uuid
+  sessionId String? @map("session_id") @db.Uuid
+
+  // Context
+  properties Json @default("{}")
+
+  // Client
+  deviceType String? @map("device_type") @db.VarChar(20)
+  browser    String? @db.VarChar(50)
+  os         String? @db.VarChar(50)
+  country    String? @db.VarChar(2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([eventName])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("analytics_events")
+}
