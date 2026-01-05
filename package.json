@@ -1,0 +1,59 @@
+{
+  "name": "verihire",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-Powered Skill Certification and Hiring Platform",
+  "keywords": ["hiring", "certification", "ai", "blockchain", "skills"],
+  "license": "MIT",
+  "author": "VeriHire Team",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "turbo run test",
+    "test:ci": "turbo run test:ci",
+    "test:coverage": "turbo run test:coverage",
+    "test:e2e": "turbo run test:e2e",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "db:generate": "pnpm --filter @verihire/database generate",
+    "db:push": "pnpm --filter @verihire/database push",
+    "db:migrate": "pnpm --filter @verihire/database migrate",
+    "db:migrate:deploy": "pnpm --filter @verihire/database migrate:deploy",
+    "db:studio": "pnpm --filter @verihire/database studio",
+    "db:seed": "pnpm --filter @verihire/database seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "release": "turbo run build && changeset publish",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@types/node": "^20.11.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.2.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}
