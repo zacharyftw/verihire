@@ -326,12 +326,20 @@ export async function retry<T>(
 // =============================================================================
 
 import { nanoid } from 'nanoid';
+import { randomUUID } from 'crypto';
 
 /**
- * Generate a unique ID
+ * Generate a unique ID (nanoid format)
  */
 export function generateId(size = 21): string {
   return nanoid(size);
+}
+
+/**
+ * Generate a UUID v4
+ */
+export function generateUUID(): string {
+  return randomUUID();
 }
 
 /**

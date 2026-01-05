@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { prisma, User } from '@verihire/database';
-import { generateId } from '@verihire/utils';
+import { generateUUID } from '@verihire/utils';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 
@@ -107,7 +107,7 @@ export class AuthService {
 
   private async generateAuthResponse(user: User, existingSessionId?: string) {
     // Create or reuse session
-    const sessionId = existingSessionId || generateId();
+    const sessionId = existingSessionId || generateUUID();
 
     if (!existingSessionId) {
       const expiresAt = new Date();
@@ -117,7 +117,7 @@ export class AuthService {
         data: {
           id: sessionId,
           userId: user.id,
-          tokenHash: generateId(), // Simplified - in production, hash the refresh token
+          tokenHash: generateUUID(), // Simplified - in production, hash the refresh token
           expiresAt,
         },
       });
