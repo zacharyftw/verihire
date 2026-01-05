@@ -7,6 +7,7 @@ import { UsersModule } from './modules/users/users.module';
 import { SkillsModule } from './modules/skills/skills.module';
 import { ChallengesModule } from './modules/challenges/challenges.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
+import { CandidatesModule } from './modules/candidates/candidates.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -43,6 +44,7 @@ import configuration from './config/configuration';
     SkillsModule,
     ChallengesModule,
     SubmissionsModule,
+    CandidatesModule,
   ],
 })
 export class AppModule {}
