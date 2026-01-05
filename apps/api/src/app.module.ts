@@ -9,6 +9,7 @@ import { ChallengesModule } from './modules/challenges/challenges.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -47,6 +48,7 @@ import configuration from './config/configuration';
     SubmissionsModule,
     CandidatesModule,
     EvaluationsModule,
+    JobsModule,
   ],
 })
 export class AppModule {}
