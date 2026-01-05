@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { prisma } from '@verihire/database';
 
 export interface JwtPayload {
   sub: string;
@@ -25,6 +26,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload.sub || !payload.sessionId) {
       throw new UnauthorizedException('Invalid token');
     }
-    return payload;
+
+    // Fetch candidate or recruiter profile ID if applicable
+    let candidateProfileId: string | null = null;
+    let recruiterProfileId: string | null = null;
+
+    if (payload.userType === 'CANDIDATE') {
+      const profile = await prisma.candidateProfile.findUnique({
+        where: { userId: payload.sub },
+        select: { id: true },
+      });
+      candidateProfileId = profile?.id || null;
+    } else if (payload.userType === 'RECRUITER') {
+      const profile = await prisma.recruiterProfile.findUnique({
+        where: { userId: payload.sub },
+        select: { id: true },
+      });
+      recruiterProfileId = profile?.id || null;
+    }
+
+    return {
+      ...payload,
+      candidateProfileId,
+      recruiterProfileId,
+    };
   }
 }
