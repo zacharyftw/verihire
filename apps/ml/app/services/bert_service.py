@@ -1,12 +1,15 @@
 """BERT service for text evaluation and quality scoring."""
 
 import logging
+import os
 import re
 import time
 from collections import Counter
 from functools import lru_cache
+from pathlib import Path
 
 import torch
+import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 
 from app.core.config import get_settings
@@ -20,16 +23,60 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 
+class TextQualityClassifier(nn.Module):
+    """Classification head for text quality prediction.
+
+    This is loaded when a trained classifier checkpoint is available.
+    """
+
+    METRIC_NAMES = ["relevance", "coherence", "depth", "clarity", "originality"]
+
+    def __init__(
+        self,
+        bert_model: PreTrainedModel,
+        hidden_size: int = 768,
+        num_metrics: int = 5,
+        dropout_rate: float = 0.1,
+    ):
+        super().__init__()
+        self.bert = bert_model
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, num_metrics),
+            nn.Sigmoid(),
+        )
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        cls_embedding = outputs.last_hidden_state[:, 0, :]
+        return self.classifier(cls_embedding)
+
+
 class BERTService:
-    """Service for text evaluation using BERT model."""
+    """Service for text evaluation using BERT model.
+
+    Supports three scoring modes:
+    - "heuristic": Rule-based scoring (default, backward compatible)
+    - "ml": Use trained classification head for scoring
+    - "hybrid": Blend ML and heuristic scores
+    """
 
     def __init__(self) -> None:
         """Initialize the BERT service."""
         self.settings = get_settings()
         self._model: PreTrainedModel | None = None
+        self._classifier: TextQualityClassifier | None = None
         self._tokenizer: PreTrainedTokenizer | None = None
         self._device: str = "cpu"
         self._loaded: bool = False
+        self._classifier_loaded: bool = False
         self._load_time_ms: float = 0
 
     @property
@@ -83,9 +130,101 @@ class BERTService:
             self._load_time_ms = (time.time() - start_time) * 1000
             logger.info(f"BERT model loaded in {self._load_time_ms:.2f}ms")
 
+            # Try to load trained classifier if path is configured
+            self._load_classifier()
+
         except Exception as e:
             logger.error(f"Failed to load BERT model: {e}")
             raise
+
+    def _load_classifier(self) -> None:
+        """Load trained classification head if available."""
+        classifier_path = self.settings.text_quality_classifier_path
+
+        if not classifier_path:
+            logger.info("No text classifier path configured, using heuristic scoring")
+            return
+
+        if not os.path.exists(classifier_path):
+            logger.warning(
+                f"Text classifier path not found: {classifier_path}, using heuristic scoring"
+            )
+            return
+
+        try:
+            logger.info(f"Loading trained text classifier from: {classifier_path}")
+
+            # Create classifier with the loaded BERT model
+            self._classifier = TextQualityClassifier(
+                bert_model=self._model,
+                hidden_size=self._model.config.hidden_size,
+            )
+
+            # Load trained weights
+            checkpoint = torch.load(classifier_path, map_location=self._device)
+
+            # Handle different checkpoint formats
+            if "model_state_dict" in checkpoint:
+                state_dict = checkpoint["model_state_dict"]
+            else:
+                state_dict = checkpoint
+
+            # Only load classifier head weights
+            classifier_state = {
+                k.replace("classifier.", ""): v
+                for k, v in state_dict.items()
+                if k.startswith("classifier.")
+            }
+
+            if classifier_state:
+                self._classifier.classifier.load_state_dict(classifier_state)
+            else:
+                self._classifier.load_state_dict(state_dict, strict=False)
+
+            self._classifier.to(self._device)
+            self._classifier.eval()
+            self._classifier_loaded = True
+
+            logger.info("Trained text classifier loaded successfully - ML scoring enabled")
+
+        except Exception as e:
+            logger.error(f"Failed to load text classifier: {e}, falling back to heuristic scoring")
+            self._classifier = None
+            self._classifier_loaded = False
+
+    def _get_ml_scores(self, text: str) -> dict[str, float] | None:
+        """Get quality scores from trained ML classifier.
+
+        Returns:
+            Dict of metric scores (0-1) or None if classifier not available
+        """
+        if not self._classifier_loaded or self._classifier is None:
+            return None
+
+        try:
+            inputs = self._tokenizer(
+                text,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True,
+            )
+            inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+            with torch.no_grad():
+                scores = self._classifier(
+                    inputs["input_ids"],
+                    inputs.get("attention_mask"),
+                )
+
+            scores = scores.cpu().numpy()[0]
+            return {
+                name: float(scores[i]) for i, name in enumerate(TextQualityClassifier.METRIC_NAMES)
+            }
+
+        except Exception as e:
+            logger.warning(f"ML text scoring failed: {e}, falling back to heuristic")
+            return None
 
     def _get_text_embedding(self, text: str) -> torch.Tensor:
         """Get embedding vector for text."""
@@ -517,19 +656,58 @@ class BERTService:
         return suggestions[:5]
 
     def evaluate(self, request: TextEvaluationRequest) -> TextEvaluationResponse:
-        """Evaluate text and return comprehensive analysis."""
+        """Evaluate text and return comprehensive analysis.
+
+        Uses ML-based scoring if trained classifier is available,
+        otherwise falls back to heuristic scoring.
+        """
         start_time = time.time()
 
         word_count = self._calculate_word_count(request.text)
 
-        # Run all analyses
-        relevance_score = self._analyze_relevance(
+        # Get heuristic scores (always computed)
+        heuristic_relevance = self._analyze_relevance(
             request.text, request.question, request.expected_topics
         )
-        coherence_score = self._analyze_coherence(request.text)
-        depth_score = self._analyze_depth(request.text, request.evaluation_type)
-        clarity_score = self._analyze_clarity(request.text)
-        originality_score = self._analyze_originality(request.text)
+        heuristic_coherence = self._analyze_coherence(request.text)
+        heuristic_depth = self._analyze_depth(request.text, request.evaluation_type)
+        heuristic_clarity = self._analyze_clarity(request.text)
+        heuristic_originality = self._analyze_originality(request.text)
+
+        # Determine scoring mode and get final scores
+        scoring_mode = self.settings.scoring_mode
+        ml_scores = None
+
+        if scoring_mode in ("ml", "hybrid") and self._classifier_loaded:
+            ml_scores = self._get_ml_scores(request.text)
+
+        if scoring_mode == "ml" and ml_scores:
+            # Pure ML scoring
+            relevance_score = ml_scores["relevance"]
+            coherence_score = ml_scores["coherence"]
+            depth_score = ml_scores["depth"]
+            clarity_score = ml_scores["clarity"]
+            originality_score = ml_scores["originality"]
+            logger.debug("Using ML-based text scoring")
+
+        elif scoring_mode == "hybrid" and ml_scores:
+            # Blend ML and heuristic scores
+            w = self.settings.hybrid_ml_weight
+            relevance_score = w * ml_scores["relevance"] + (1 - w) * heuristic_relevance
+            coherence_score = w * ml_scores["coherence"] + (1 - w) * heuristic_coherence
+            depth_score = w * ml_scores["depth"] + (1 - w) * heuristic_depth
+            clarity_score = w * ml_scores["clarity"] + (1 - w) * heuristic_clarity
+            originality_score = w * ml_scores["originality"] + (1 - w) * heuristic_originality
+            logger.debug(f"Using hybrid text scoring (ML weight: {w})")
+
+        else:
+            # Pure heuristic scoring (default)
+            relevance_score = heuristic_relevance
+            coherence_score = heuristic_coherence
+            depth_score = heuristic_depth
+            clarity_score = heuristic_clarity
+            originality_score = heuristic_originality
+            logger.debug("Using heuristic text scoring")
 
         # Create metrics
         metrics = TextMetrics(
