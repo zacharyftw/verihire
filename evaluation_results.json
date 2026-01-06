@@ -1,0 +1,79 @@
+{
+  "summary": {
+    "total_evaluations": 5,
+    "code_evaluations": 3,
+    "text_evaluations": 2,
+    "average_score": 73.11,
+    "pass_rate": 80.0,
+    "average_processing_time_ms": 125.59
+  },
+  "code_results": [
+    {
+      "name": "High Quality Python - Fibonacci with Docs",
+      "score": 82.58,
+      "metrics": {
+        "complexity": 50.5,
+        "readability": 69.19999999999999,
+        "maintainability": 80.80000000000001,
+        "security": 100.0,
+        "best_practices": 100.0
+      },
+      "processing_time_ms": 217.49,
+      "issues_count": 0
+    },
+    {
+      "name": "Medium Quality JavaScript - Quick Sort",
+      "score": 79.36,
+      "metrics": {
+        "complexity": 60.5,
+        "readability": 53.0,
+        "maintainability": 76.4,
+        "security": 100.0,
+        "best_practices": 97.0
+      },
+      "processing_time_ms": 93.02,
+      "issues_count": 1
+    },
+    {
+      "name": "Low Quality Python - Security Issues",
+      "score": 71.74,
+      "metrics": {
+        "complexity": 86.5,
+        "readability": 58.4,
+        "maintainability": 72.7,
+        "security": 55.00000000000001,
+        "best_practices": 94.0
+      },
+      "processing_time_ms": 57.17,
+      "issues_count": 5
+    }
+  ],
+  "text_results": [
+    {
+      "name": "High Quality Technical Explanation",
+      "score": 72.86,
+      "metrics": {
+        "relevance": 70.0,
+        "clarity": 100.0,
+        "coherence": 39.300000000000004,
+        "depth": 70.0,
+        "originality": 100.0
+      },
+      "processing_time_ms": 194.94,
+      "word_count": 161
+    },
+    {
+      "name": "Medium Quality Response",
+      "score": 59.0,
+      "metrics": {
+        "relevance": 70.0,
+        "clarity": 93.0,
+        "coherence": 47.599999999999994,
+        "depth": 23.599999999999998,
+        "originality": 80.9
+      },
+      "processing_time_ms": 65.31,
+      "word_count": 66
+    }
+  ]
+}
