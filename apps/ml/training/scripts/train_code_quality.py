@@ -31,7 +31,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
 # Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models import CodeQualityClassifier, save_model
 from datasets import CodeQualityDataset

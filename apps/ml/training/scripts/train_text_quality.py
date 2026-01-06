@@ -28,7 +28,7 @@ import torch.nn as nn
 from torch.optim import AdamW
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models import TextQualityClassifier, save_model
 from datasets import TextQualityDataset
