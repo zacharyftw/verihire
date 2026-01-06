@@ -153,13 +153,7 @@ class CodeBERTService:
         try:
             logger.info(f"Loading trained classifier from: {classifier_path}")
 
-            # Create classifier with the loaded BERT model
-            self._classifier = CodeQualityClassifier(
-                bert_model=self._model,
-                hidden_size=self._model.config.hidden_size,
-            )
-
-            # Load trained weights
+            # Load checkpoint
             checkpoint = torch.load(classifier_path, map_location=self._device)
 
             # Handle different checkpoint formats
@@ -168,18 +162,15 @@ class CodeBERTService:
             else:
                 state_dict = checkpoint
 
-            # Only load classifier head weights (BERT weights are already loaded)
-            classifier_state = {
-                k.replace("classifier.", ""): v
-                for k, v in state_dict.items()
-                if k.startswith("classifier.")
-            }
+            # Create classifier with BERT model and load FULL state dict
+            # (including fine-tuned BERT weights, not just classifier head)
+            self._classifier = CodeQualityClassifier(
+                bert_model=self._model,
+                hidden_size=self._model.config.hidden_size,
+            )
 
-            if classifier_state:
-                self._classifier.classifier.load_state_dict(classifier_state)
-            else:
-                # Try loading full state dict if format is different
-                self._classifier.load_state_dict(state_dict, strict=False)
+            # Load the FULL state dict (BERT was fine-tuned during training)
+            self._classifier.load_state_dict(state_dict, strict=False)
 
             self._classifier.to(self._device)
             self._classifier.eval()
