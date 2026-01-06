@@ -1,0 +1,6 @@
+# Training data directory
+# Place your labeled datasets here:
+# - code_quality_train.json
+# - code_quality_val.json
+# - text_quality_train.json
+# - text_quality_val.json

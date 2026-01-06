@@ -1,0 +1,4 @@
+# Model checkpoints directory
+# Trained models will be saved here:
+# - code_quality_classifier.pt
+# - text_quality_classifier.pt

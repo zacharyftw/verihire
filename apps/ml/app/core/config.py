@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     codebert_model: str = "microsoft/codebert-base"
     bert_model: str = "bert-base-uncased"
 
+    # Fine-tuned classifier paths (set to enable ML-based scoring)
+    # When these paths point to valid .pt files, the service will use
+    # the trained classification heads instead of heuristic scoring
+    code_quality_classifier_path: str | None = None
+    text_quality_classifier_path: str | None = None
+
+    # Scoring mode: "ml" uses trained classifiers, "heuristic" uses rule-based
+    # "hybrid" blends both approaches
+    scoring_mode: Literal["ml", "heuristic", "hybrid"] = "heuristic"
+    hybrid_ml_weight: float = 0.7  # Weight for ML scores in hybrid mode
+
     # Scoring thresholds
     code_quality_threshold: float = 0.7
     text_quality_threshold: float = 0.7

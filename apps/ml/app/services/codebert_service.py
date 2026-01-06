@@ -1,12 +1,15 @@
 """CodeBERT service for code evaluation and quality scoring."""
 
 import logging
+import os
 import re
 import time
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import torch
+import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 
 from app.core.config import get_settings
@@ -21,16 +24,60 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 
+class CodeQualityClassifier(nn.Module):
+    """Classification head for code quality prediction.
+
+    This is loaded when a trained classifier checkpoint is available.
+    """
+
+    METRIC_NAMES = ["complexity", "readability", "maintainability", "security", "best_practices"]
+
+    def __init__(
+        self,
+        bert_model: PreTrainedModel,
+        hidden_size: int = 768,
+        num_metrics: int = 5,
+        dropout_rate: float = 0.1,
+    ):
+        super().__init__()
+        self.bert = bert_model
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, num_metrics),
+            nn.Sigmoid(),
+        )
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        cls_embedding = outputs.last_hidden_state[:, 0, :]
+        return self.classifier(cls_embedding)
+
+
 class CodeBERTService:
-    """Service for code evaluation using CodeBERT model."""
+    """Service for code evaluation using CodeBERT model.
+
+    Supports three scoring modes:
+    - "heuristic": Rule-based scoring (default, backward compatible)
+    - "ml": Use trained classification head for scoring
+    - "hybrid": Blend ML and heuristic scores
+    """
 
     def __init__(self) -> None:
         """Initialize the CodeBERT service."""
         self.settings = get_settings()
         self._model: PreTrainedModel | None = None
+        self._classifier: CodeQualityClassifier | None = None
         self._tokenizer: PreTrainedTokenizer | None = None
         self._device: str = "cpu"
         self._loaded: bool = False
+        self._classifier_loaded: bool = False
         self._load_time_ms: float = 0
 
     @property
@@ -84,9 +131,101 @@ class CodeBERTService:
             self._load_time_ms = (time.time() - start_time) * 1000
             logger.info(f"CodeBERT model loaded in {self._load_time_ms:.2f}ms")
 
+            # Try to load trained classifier if path is configured
+            self._load_classifier()
+
         except Exception as e:
             logger.error(f"Failed to load CodeBERT model: {e}")
             raise
+
+    def _load_classifier(self) -> None:
+        """Load trained classification head if available."""
+        classifier_path = self.settings.code_quality_classifier_path
+
+        if not classifier_path:
+            logger.info("No classifier path configured, using heuristic scoring")
+            return
+
+        if not os.path.exists(classifier_path):
+            logger.warning(f"Classifier path not found: {classifier_path}, using heuristic scoring")
+            return
+
+        try:
+            logger.info(f"Loading trained classifier from: {classifier_path}")
+
+            # Create classifier with the loaded BERT model
+            self._classifier = CodeQualityClassifier(
+                bert_model=self._model,
+                hidden_size=self._model.config.hidden_size,
+            )
+
+            # Load trained weights
+            checkpoint = torch.load(classifier_path, map_location=self._device)
+
+            # Handle different checkpoint formats
+            if "model_state_dict" in checkpoint:
+                state_dict = checkpoint["model_state_dict"]
+            else:
+                state_dict = checkpoint
+
+            # Only load classifier head weights (BERT weights are already loaded)
+            classifier_state = {
+                k.replace("classifier.", ""): v
+                for k, v in state_dict.items()
+                if k.startswith("classifier.")
+            }
+
+            if classifier_state:
+                self._classifier.classifier.load_state_dict(classifier_state)
+            else:
+                # Try loading full state dict if format is different
+                self._classifier.load_state_dict(state_dict, strict=False)
+
+            self._classifier.to(self._device)
+            self._classifier.eval()
+            self._classifier_loaded = True
+
+            logger.info("Trained classifier loaded successfully - ML scoring enabled")
+
+        except Exception as e:
+            logger.error(f"Failed to load classifier: {e}, falling back to heuristic scoring")
+            self._classifier = None
+            self._classifier_loaded = False
+
+    def _get_ml_scores(self, code: str) -> dict[str, float] | None:
+        """Get quality scores from trained ML classifier.
+
+        Returns:
+            Dict of metric scores (0-1) or None if classifier not available
+        """
+        if not self._classifier_loaded or self._classifier is None:
+            return None
+
+        try:
+            inputs = self._tokenizer(
+                code,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True,
+            )
+            inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+            with torch.no_grad():
+                scores = self._classifier(
+                    inputs["input_ids"],
+                    inputs.get("attention_mask"),
+                )
+
+            # Convert to dict
+            scores = scores.cpu().numpy()[0]
+            return {
+                name: float(scores[i]) for i, name in enumerate(CodeQualityClassifier.METRIC_NAMES)
+            }
+
+        except Exception as e:
+            logger.warning(f"ML scoring failed: {e}, falling back to heuristic")
+            return None
 
     def _get_code_embedding(self, code: str) -> torch.Tensor:
         """Get embedding vector for code snippet."""
@@ -361,20 +500,63 @@ class CodeBERTService:
         return suggestions[:5]  # Limit to top 5 suggestions
 
     def evaluate(self, request: CodeEvaluationRequest) -> CodeEvaluationResponse:
-        """Evaluate code and return comprehensive analysis."""
+        """Evaluate code and return comprehensive analysis.
+
+        Uses ML-based scoring if trained classifier is available,
+        otherwise falls back to heuristic scoring.
+        """
         start_time = time.time()
 
-        # Run all analyses
-        complexity_score = self._analyze_complexity(request.code, request.language)
-        readability_score = self._analyze_readability(request.code, request.language)
-        maintainability_score = self._analyze_maintainability(request.code, request.language)
-        security_score, security_issues = self._analyze_security(request.code, request.language)
-        best_practices_score, bp_issues = self._analyze_best_practices(
+        # Get heuristic scores (always computed for issues detection)
+        heuristic_complexity = self._analyze_complexity(request.code, request.language)
+        heuristic_readability = self._analyze_readability(request.code, request.language)
+        heuristic_maintainability = self._analyze_maintainability(request.code, request.language)
+        heuristic_security, security_issues = self._analyze_security(request.code, request.language)
+        heuristic_best_practices, bp_issues = self._analyze_best_practices(
             request.code, request.language
         )
 
-        # Combine issues
+        # Combine issues (always from heuristic analysis)
         all_issues = security_issues + bp_issues
+
+        # Determine scoring mode and get final scores
+        scoring_mode = self.settings.scoring_mode
+        ml_scores = None
+
+        if scoring_mode in ("ml", "hybrid") and self._classifier_loaded:
+            ml_scores = self._get_ml_scores(request.code)
+
+        if scoring_mode == "ml" and ml_scores:
+            # Pure ML scoring
+            complexity_score = ml_scores["complexity"]
+            readability_score = ml_scores["readability"]
+            maintainability_score = ml_scores["maintainability"]
+            security_score = ml_scores["security"]
+            best_practices_score = ml_scores["best_practices"]
+            logger.debug("Using ML-based scoring")
+
+        elif scoring_mode == "hybrid" and ml_scores:
+            # Blend ML and heuristic scores
+            w = self.settings.hybrid_ml_weight
+            complexity_score = w * ml_scores["complexity"] + (1 - w) * heuristic_complexity
+            readability_score = w * ml_scores["readability"] + (1 - w) * heuristic_readability
+            maintainability_score = (
+                w * ml_scores["maintainability"] + (1 - w) * heuristic_maintainability
+            )
+            security_score = w * ml_scores["security"] + (1 - w) * heuristic_security
+            best_practices_score = (
+                w * ml_scores["best_practices"] + (1 - w) * heuristic_best_practices
+            )
+            logger.debug(f"Using hybrid scoring (ML weight: {w})")
+
+        else:
+            # Pure heuristic scoring (default)
+            complexity_score = heuristic_complexity
+            readability_score = heuristic_readability
+            maintainability_score = heuristic_maintainability
+            security_score = heuristic_security
+            best_practices_score = heuristic_best_practices
+            logger.debug("Using heuristic scoring")
 
         # Create metrics
         metrics = CodeMetrics(
