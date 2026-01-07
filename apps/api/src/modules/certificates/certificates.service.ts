@@ -6,6 +6,7 @@ import { PdfGeneratorService } from './pdf-generator.service';
 import { QrCodeService } from './qrcode.service';
 import { StorageService } from '../storage/storage.service';
 import { QueueService } from '../queue/queue.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
 import {
   CertificateData,
   CertificateResponseDto,
@@ -41,7 +42,8 @@ export class CertificatesService {
     private readonly pdfGeneratorService: PdfGeneratorService,
     private readonly qrCodeService: QrCodeService,
     private readonly storageService: StorageService,
-    private readonly queueService: QueueService
+    private readonly queueService: QueueService,
+    private readonly blockchainService: BlockchainService
   ) {
     this.baseUrl = this.configService.get<string>('APP_URL', 'https://verihire.io');
   }
@@ -646,6 +648,9 @@ export class CertificatesService {
       verification,
       storage,
       metadata: metadataInfo,
+      blockchainExplorerUrl: certificate.blockchainTxId
+        ? this.blockchainService.getExplorerUrl(certificate.blockchainTxId)
+        : undefined,
     };
   }
 }
