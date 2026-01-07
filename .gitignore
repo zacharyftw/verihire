@@ -52,3 +52,20 @@ Thumbs.db
 tmp/
 temp/
 .cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ML Models & Training Data (upload separately with Git LFS)
+*.pt
+*.pth
+*.onnx
+apps/ml/training/data/*.json
+apps/ml/training/checkpoints/
+
+# Jupyter Notebooks
+notebooks/*.ipynb
