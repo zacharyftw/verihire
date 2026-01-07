@@ -12,6 +12,7 @@ import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
+import { QueueModule } from './modules/queue/queue.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -53,6 +54,7 @@ import configuration from './config/configuration';
     JobsModule,
     ReviewsModule,
     CertificatesModule,
+    QueueModule,
   ],
 })
 export class AppModule {}
