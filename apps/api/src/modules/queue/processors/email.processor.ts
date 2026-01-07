@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bull';
 import * as nodemailer from 'nodemailer';
-import { QUEUE_NAMES } from '../queue.module';
+import { QUEUE_NAMES } from '../constants';
 import { EmailJobData } from '../queue.service';
 
 @Processor(QUEUE_NAMES.EMAIL)
