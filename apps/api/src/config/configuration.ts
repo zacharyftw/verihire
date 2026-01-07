@@ -41,10 +41,14 @@ export default () => ({
   },
 
   storage: {
-    endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
-    accessKey: process.env.S3_ACCESS_KEY || 'minioadmin',
-    secretKey: process.env.S3_SECRET_KEY || 'minioadmin',
-    bucket: process.env.S3_BUCKET || 'verihire',
+    endpoint:
+      process.env.S3_ENDPOINT ||
+      (process.env.MINIO_ENDPOINT
+        ? `http${process.env.MINIO_USE_SSL === 'true' ? 's' : ''}://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT || '9000'}`
+        : 'http://localhost:9000'),
+    accessKey: process.env.S3_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'minioadmin',
+    secretKey: process.env.S3_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || 'minioadmin',
+    bucket: process.env.S3_BUCKET || process.env.MINIO_BUCKET || 'verihire',
   },
 
   openai: {
