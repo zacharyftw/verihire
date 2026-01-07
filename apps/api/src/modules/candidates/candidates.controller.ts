@@ -9,8 +9,20 @@ import {
   Query,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CandidatesService } from './candidates.service';
 import { UpdateProfileDto, AddSkillDto, UpdateSkillDto } from './dto/candidate.dto';
@@ -216,5 +228,137 @@ export class CandidatesController {
       limit,
       offset,
     });
+  }
+
+  // =========================================================================
+  // FILE UPLOAD ENDPOINTS
+  // =========================================================================
+
+  @Post('me/resume')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload resume' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Resume uploaded' })
+  @ApiResponse({ status: 400, description: 'Invalid file type or size' })
+  async uploadResume(
+    @Request() req: Request & { user: { candidateProfileId?: string } },
+    @UploadedFile() file: Express.Multer.File
+  ): Promise<unknown> {
+    const candidateId = req.user.candidateProfileId;
+    if (!candidateId) {
+      return { error: 'User is not a candidate' };
+    }
+
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    return this.candidatesService.uploadResume(candidateId, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+  }
+
+  @Delete('me/resume')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete resume' })
+  @ApiResponse({ status: 200, description: 'Resume deleted' })
+  async deleteResume(
+    @Request() req: Request & { user: { candidateProfileId?: string } }
+  ): Promise<unknown> {
+    const candidateId = req.user.candidateProfileId;
+    if (!candidateId) {
+      return { error: 'User is not a candidate' };
+    }
+    return this.candidatesService.deleteResume(candidateId);
+  }
+
+  @Post('me/portfolio')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload portfolio file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Portfolio file uploaded' })
+  @ApiResponse({ status: 400, description: 'Invalid file type or size' })
+  async uploadPortfolioFile(
+    @Request() req: Request & { user: { candidateProfileId?: string } },
+    @UploadedFile() file: Express.Multer.File
+  ): Promise<unknown> {
+    const candidateId = req.user.candidateProfileId;
+    if (!candidateId) {
+      return { error: 'User is not a candidate' };
+    }
+
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    return this.candidatesService.uploadPortfolioFile(candidateId, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+  }
+
+  @Get('me/portfolio')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List portfolio files' })
+  @ApiResponse({ status: 200, description: 'Portfolio files list' })
+  async listPortfolioFiles(
+    @Request() req: Request & { user: { candidateProfileId?: string } }
+  ): Promise<unknown> {
+    const candidateId = req.user.candidateProfileId;
+    if (!candidateId) {
+      return { error: 'User is not a candidate' };
+    }
+    return this.candidatesService.listPortfolioFiles(candidateId);
+  }
+
+  @Delete('me/portfolio/:key')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete portfolio file' })
+  @ApiResponse({ status: 200, description: 'Portfolio file deleted' })
+  async deletePortfolioFile(
+    @Request() req: Request & { user: { candidateProfileId?: string } },
+    @Param('key') key: string
+  ): Promise<unknown> {
+    const candidateId = req.user.candidateProfileId;
+    if (!candidateId) {
+      return { error: 'User is not a candidate' };
+    }
+    // Key comes URL encoded, decode it
+    const decodedKey = decodeURIComponent(key);
+    return this.candidatesService.deletePortfolioFile(candidateId, decodedKey);
   }
 }

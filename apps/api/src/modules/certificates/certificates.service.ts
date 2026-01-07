@@ -4,6 +4,7 @@ import { prisma } from '@verihire/database';
 import { CryptoService } from './crypto.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { QrCodeService } from './qrcode.service';
+import { StorageService } from '../storage/storage.service';
 import {
   CertificateData,
   CertificateResponseDto,
@@ -37,7 +38,8 @@ export class CertificatesService {
     private readonly configService: ConfigService,
     private readonly cryptoService: CryptoService,
     private readonly pdfGeneratorService: PdfGeneratorService,
-    private readonly qrCodeService: QrCodeService
+    private readonly qrCodeService: QrCodeService,
+    private readonly storageService: StorageService
   ) {
     this.baseUrl = this.configService.get<string>('APP_URL', 'https://verihire.io');
   }
@@ -328,19 +330,58 @@ export class CertificatesService {
   }
 
   /**
-   * Generate PDF for certificate
+   * Generate PDF for certificate and upload to storage
    */
   async generatePdf(certificateId: string): Promise<Buffer> {
     const certificate = await this.getCertificateById(certificateId);
-    return this.pdfGeneratorService.generatePdf(certificate);
+    const pdfBuffer = await this.pdfGeneratorService.generatePdf(certificate);
+
+    // Upload to storage
+    try {
+      const uploadResult = await this.storageService.uploadCertificatePdf(certificateId, pdfBuffer);
+
+      // Update certificate with PDF URL
+      await prisma.certificate.update({
+        where: { id: certificateId },
+        data: { pdfUrl: uploadResult.url },
+      });
+
+      this.logger.log(`Certificate PDF uploaded: ${uploadResult.url}`);
+    } catch (error) {
+      this.logger.warn(`Failed to upload PDF to storage: ${error}`);
+      // Continue without failing - PDF is still returned
+    }
+
+    return pdfBuffer;
   }
 
   /**
-   * Generate shareable image for certificate
+   * Generate shareable image for certificate and upload to storage
    */
   async generateImage(certificateId: string): Promise<Buffer> {
     const certificate = await this.getCertificateById(certificateId);
-    return this.pdfGeneratorService.generateShareableImage(certificate);
+    const imageBuffer = await this.pdfGeneratorService.generateShareableImage(certificate);
+
+    // Upload to storage
+    try {
+      const uploadResult = await this.storageService.uploadCertificateImage(
+        certificateId,
+        imageBuffer
+      );
+
+      // Update certificate with image URL
+      await prisma.certificate.update({
+        where: { id: certificateId },
+        data: { imageUrl: uploadResult.url },
+      });
+
+      this.logger.log(`Certificate image uploaded: ${uploadResult.url}`);
+    } catch (error) {
+      this.logger.warn(`Failed to upload image to storage: ${error}`);
+      // Continue without failing - image is still returned
+    }
+
+    return imageBuffer;
   }
 
   /**

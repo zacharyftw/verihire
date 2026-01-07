@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -11,16 +12,18 @@ import { prisma, User } from '@verihire/database';
 import { generateUUID } from '@verihire/utils';
 import { createHash, randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
-import { EmailService } from './email.service';
+import { QueueService } from '../queue';
 import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly emailService: EmailService
+    private readonly queueService: QueueService
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -226,8 +229,10 @@ export class AuthService {
       },
     });
 
-    // Send email (don't wait for it to complete)
-    this.emailService.sendPasswordResetEmail(user.email, token, user.firstName ?? undefined);
+    // Send email via queue (don't wait for it to complete)
+    this.queueService
+      .sendPasswordResetEmail(user.email, token, user.firstName ?? 'there')
+      .catch(err => this.logger.error(`Failed to queue password reset email: ${err.message}`));
 
     return { message: 'If an account exists, a password reset email has been sent' };
   }
@@ -315,8 +320,8 @@ export class AuthService {
       },
     });
 
-    // Send email
-    await this.emailService.sendVerificationEmail(user.email, token, user.firstName ?? undefined);
+    // Send email via queue
+    await this.queueService.sendVerificationEmail(user.email, token, user.firstName ?? 'there');
 
     return { message: 'Verification email sent' };
   }
