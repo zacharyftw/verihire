@@ -1,6 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma, ReviewStatus, ConfidenceLevel } from '@verihire/database';
-import { Decimal } from '@prisma/client/runtime/library';
 import {
   AssignReviewersDto,
   SubmitReviewDto,
@@ -330,7 +329,7 @@ export class ReviewsService {
       where: { id: reviewId },
       data: {
         criteriaScores: dto.criteriaScores as any,
-        overallScore: new Decimal(dto.overallScore),
+        overallScore: dto.overallScore,
         strengths: dto.strengths,
         areasForImprovement: dto.areasForImprovement,
         suggestions: dto.suggestions,
@@ -338,12 +337,12 @@ export class ReviewsService {
         timeSpentSeconds,
         submittedAt: new Date(),
         status: reviewStatus,
-        qualityScore: new Decimal(qualityResult.overallQuality * 100),
-        effortScore: new Decimal(qualityResult.metrics.effortScore * 100),
-        specificityScore: new Decimal(qualityResult.metrics.specificityScore * 100),
+        qualityScore: qualityResult.overallQuality * 100,
+        effortScore: qualityResult.metrics.effortScore * 100,
+        specificityScore: qualityResult.metrics.specificityScore * 100,
         biasDetected: qualityResult.biasAnalysis.biasDetected,
         biasType: qualityResult.biasAnalysis.biasType,
-        reputationDelta: new Decimal(reputationDelta),
+        reputationDelta: reputationDelta,
       },
     });
 
@@ -609,8 +608,8 @@ export class ReviewsService {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
-          peerScore: aggregated.peerScore ? new Decimal(aggregated.peerScore) : null,
-          finalScore: new Decimal(aggregated.finalScore),
+          peerScore: aggregated.peerScore ?? null,
+          finalScore: aggregated.finalScore,
         },
       });
 

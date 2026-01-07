@@ -10,6 +10,7 @@ import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { JobsModule } from './modules/jobs/jobs.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -49,6 +50,7 @@ import configuration from './config/configuration';
     CandidatesModule,
     EvaluationsModule,
     JobsModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}
