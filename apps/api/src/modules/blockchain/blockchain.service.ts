@@ -27,7 +27,7 @@ export class BlockchainService {
     try {
       this.logger.log(`Anchoring certificate ${certificateNumber} to blockchain`);
 
-      const hashBytes = ethers.toBeHex(hash, 32);
+      const hashBytes = `0x${hash}`;
       const tx = await this.contract.anchor(certificateNumber, hashBytes);
       const receipt = await tx.wait();
 
