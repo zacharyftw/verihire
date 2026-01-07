@@ -3,6 +3,7 @@ import { prisma } from '@verihire/database';
 import { CryptoService } from './crypto.service';
 import { CertificatesService } from './certificates.service';
 import { VerificationResultDto, VerificationStepDto, VerifyCertificateDto } from './dto';
+import { BlockchainService } from '../blockchain/blockchain.service';
 
 /**
  * Certificate Verification Service
@@ -16,7 +17,8 @@ export class VerificationService {
 
   constructor(
     private readonly cryptoService: CryptoService,
-    private readonly certificatesService: CertificatesService
+    private readonly certificatesService: CertificatesService,
+    private readonly blockchainService: BlockchainService
   ) {}
 
   /**
@@ -268,23 +270,44 @@ export class VerificationService {
     blockchainTxId: string | null;
     blockchainNetwork: string | null;
     hash: string;
+    certificateNumber: string;
   }): Promise<VerificationStepDto> {
-    // TODO: Implement actual blockchain verification in Module 5
-    // For now, return a placeholder that indicates blockchain anchoring status
     if (!certificate.blockchainTxId) {
       return {
         name: 'Blockchain Verification',
-        passed: true, // Not required if not anchored
+        passed: true,
         details: 'Certificate not yet anchored on blockchain',
       };
     }
 
-    // In production, this would verify the transaction on the actual blockchain
-    return {
-      name: 'Blockchain Verification',
-      passed: true,
-      details: `Certificate anchored on ${certificate.blockchainNetwork || 'blockchain'} (TX: ${certificate.blockchainTxId.substring(0, 10)}...)`,
-    };
+    try {
+      const result = await this.blockchainService.verifyCertificate(certificate.certificateNumber);
+
+      if (!result.exists) {
+        return {
+          name: 'Blockchain Verification',
+          passed: false,
+          details: 'Certificate not found on blockchain',
+        };
+      }
+
+      const hashMatch = result.onChainHash.toLowerCase() === `0x${certificate.hash}`.toLowerCase();
+
+      return {
+        name: 'Blockchain Verification',
+        passed: hashMatch,
+        details: hashMatch
+          ? `Certificate anchored on ${certificate.blockchainNetwork} (TX: ${certificate.blockchainTxId.substring(0, 10)}...)`
+          : 'Blockchain hash mismatch',
+      };
+    } catch (error) {
+      this.logger.error('Blockchain verification failed', error);
+      return {
+        name: 'Blockchain Verification',
+        passed: false,
+        details: 'Unable to verify on blockchain',
+      };
+    }
   }
 
   private verifyExpiry(expiresAt: Date): VerificationStepDto {

@@ -5,6 +5,7 @@ import { CryptoService } from './crypto.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { QrCodeService } from './qrcode.service';
 import { StorageService } from '../storage/storage.service';
+import { QueueService } from '../queue/queue.service';
 import {
   CertificateData,
   CertificateResponseDto,
@@ -39,7 +40,8 @@ export class CertificatesService {
     private readonly cryptoService: CryptoService,
     private readonly pdfGeneratorService: PdfGeneratorService,
     private readonly qrCodeService: QrCodeService,
-    private readonly storageService: StorageService
+    private readonly storageService: StorageService,
+    private readonly queueService: QueueService
   ) {
     this.baseUrl = this.configService.get<string>('APP_URL', 'https://verihire.io');
   }
@@ -200,6 +202,18 @@ export class CertificatesService {
     });
 
     this.logger.log(`Generated certificate ${certificateNumber} for submission ${submissionId}`);
+
+    // Queue blockchain anchoring if enabled
+    if (this.configService.get('FEATURE_BLOCKCHAIN_ENABLED') === 'true') {
+      await this.queueService.addCertificateJob({
+        type: 'anchor-blockchain',
+        certificateId: certificate.id,
+        data: {
+          certificateNumber: certificate.certificateNumber,
+          hash,
+        },
+      });
+    }
 
     return {
       certificateId: certificate.id,
