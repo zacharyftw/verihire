@@ -16,6 +16,9 @@ import { CertificatesModule } from './modules/certificates/certificates.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { RecruitersModule } from './modules/recruiters/recruiters.module';
+import { CompaniesModule } from './modules/companies/companies.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -65,6 +68,9 @@ import configuration from './config/configuration';
     QueueModule,
     StorageModule,
     BlockchainModule,
+    RecruitersModule,
+    CompaniesModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}
