@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { join } from 'path';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -18,10 +19,15 @@ import configuration from './config/configuration';
 
 @Module({
   imports: [
-    // Configuration
+    // Configuration - load from root .env and local .env
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      envFilePath: [
+        join(__dirname, '..', '..', '..', '.env'), // Root .env
+        join(__dirname, '..', '..', '..', '.env.local'), // Root .env.local
+        join(__dirname, '..', '.env'), // apps/api/.env
+      ],
     }),
 
     // Rate limiting

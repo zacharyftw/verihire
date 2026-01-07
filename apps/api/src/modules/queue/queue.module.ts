@@ -5,14 +5,7 @@ import { QueueService } from './queue.service';
 import { EmailProcessor } from './processors/email.processor';
 import { CertificateProcessor } from './processors/certificate.processor';
 import { EvaluationProcessor } from './processors/evaluation.processor';
-
-// Queue names
-export const QUEUE_NAMES = {
-  EMAIL: 'email',
-  CERTIFICATE: 'certificate',
-  EVALUATION: 'evaluation',
-  BLOCKCHAIN: 'blockchain',
-} as const;
+import { QUEUE_NAMES } from './constants';
 
 @Module({
   imports: [
