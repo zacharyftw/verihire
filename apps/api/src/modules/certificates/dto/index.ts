@@ -255,6 +255,9 @@ export class CertificateResponseDto {
   @ValidateNested()
   @Type(() => MetadataInfoDto)
   metadata: MetadataInfoDto;
+
+  @ApiPropertyOptional({ description: 'Blockchain explorer URL for transaction' })
+  blockchainExplorerUrl?: string;
 }
 
 export class GenerateCertificateResponseDto {
