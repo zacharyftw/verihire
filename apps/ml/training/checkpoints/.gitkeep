@@ -1,4 +1,21 @@
 # Model checkpoints directory
-# Trained models will be saved here:
-# - code_quality_classifier.pt
-# - text_quality_classifier.pt
+
+## Download Pre-trained Models
+
+The trained models are hosted on Google Drive due to their size (~938MB total).
+
+**Google Drive Link:** [Add your Google Drive link here]
+
+### Option 1: Manual Download
+1. Download the models from Google Drive
+2. Place them in this directory:
+   - `code_quality_classifier_best.pt` (499MB)
+   - `text_quality_classifier_best.pt` (439MB)
+
+### Option 2: Auto Download Script
+Run the download script from the training directory:
+```bash
+python scripts/download_models.py
+```
+
+This will automatically download the models from Google Drive to this directory.

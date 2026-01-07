@@ -65,7 +65,8 @@ __pycache__/
 *.pth
 *.onnx
 apps/ml/training/data/*.json
-apps/ml/training/checkpoints/
+apps/ml/training/checkpoints/*.pt
+!apps/ml/training/checkpoints/.gitkeep
 
 # Jupyter Notebooks
 notebooks/*.ipynb
