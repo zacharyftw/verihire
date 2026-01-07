@@ -40,9 +40,7 @@ export class UsersService {
     oauthProviderId?: string;
     emailVerified?: boolean;
   }) {
-    const passwordHash = data.password
-      ? await bcrypt.hash(data.password, 12)
-      : null;
+    const passwordHash = data.password ? await bcrypt.hash(data.password, 12) : null;
 
     return prisma.user.create({
       data: {
@@ -91,6 +89,21 @@ export class UsersService {
         mfaEnabled: false,
         mfaSecretEncrypted: null,
       },
+    });
+  }
+
+  async updatePassword(userId: string, newPassword: string) {
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    return prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+  }
+
+  async markEmailVerified(userId: string) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
     });
   }
 }
