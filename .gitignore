@@ -60,13 +60,11 @@ __pycache__/
 *.so
 .Python
 
-# ML Models & Training Data (upload separately with Git LFS)
-*.pt
+# ML Models & Training Data
+# Note: *.pt files are tracked with Git LFS (see .gitattributes)
 *.pth
 *.onnx
 apps/ml/training/data/*.json
-apps/ml/training/checkpoints/*.pt
-!apps/ml/training/checkpoints/.gitkeep
 
 # Jupyter Notebooks
 notebooks/*.ipynb
