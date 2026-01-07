@@ -8,6 +8,8 @@ import {
   Res,
   HttpStatus,
   ParseUUIDPipe,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -18,6 +20,7 @@ import {
   ApiQuery,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CertificatesService } from './certificates.service';
 import { VerificationService } from './verification.service';
 import { RevocationService } from './revocation.service';
@@ -256,6 +259,7 @@ export class CertificatesController {
   }
 
   @Post(':id/reinstate')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reinstate a revoked certificate (admin only)' })
   @ApiParam({ name: 'id', description: 'Certificate UUID' })
@@ -263,11 +267,11 @@ export class CertificatesController {
   @ApiResponse({ status: 400, description: 'Certificate is not revoked or has expired' })
   @ApiResponse({ status: 404, description: 'Certificate not found' })
   async reinstateCertificate(
+    @Request() req: { user: { sub: string } },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { reason: string }
   ): Promise<{ success: boolean }> {
-    // TODO: Get actual user ID from auth context
-    await this.revocationService.reinstateCertificate(id, 'admin', body.reason);
+    await this.revocationService.reinstateCertificate(id, req.user.sub, body.reason);
     return { success: true };
   }
 
