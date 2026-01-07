@@ -1,12 +1,34 @@
 import { Process, Processor, OnQueueActive, OnQueueCompleted, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Job } from 'bull';
+import * as nodemailer from 'nodemailer';
 import { QUEUE_NAMES } from '../queue.module';
 import { EmailJobData } from '../queue.service';
 
 @Processor(QUEUE_NAMES.EMAIL)
 export class EmailProcessor {
   private readonly logger = new Logger(EmailProcessor.name);
+  private transporter: nodemailer.Transporter;
+  private readonly fromAddress: string;
+  private readonly appUrl: string;
+
+  constructor(private readonly configService: ConfigService) {
+    const host = this.configService.get('mail.host', 'localhost');
+    const port = this.configService.get('mail.port', 1025);
+    const user = this.configService.get('mail.user');
+    const pass = this.configService.get('mail.pass');
+
+    this.transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: user && pass ? { user, pass } : undefined,
+    });
+
+    this.fromAddress = this.configService.get('mail.from', 'VeriHire <noreply@verihire.com>');
+    this.appUrl = this.configService.get('APP_URL', 'http://localhost:3100');
+  }
 
   @OnQueueActive()
   onActive(job: Job<EmailJobData>) {
@@ -28,8 +50,6 @@ export class EmailProcessor {
     const { to, templateData } = job.data;
     this.logger.log(`Sending verification email to ${to}`);
 
-    // TODO: Integrate with actual email service
-    // For now, we'll simulate the email sending
     await this.sendEmail(
       to,
       'Verify your VeriHire account',
@@ -91,83 +111,122 @@ export class EmailProcessor {
     return { sent: true, to, type: 'review-assigned' };
   }
 
-  // Email sending simulation - will be replaced with actual nodemailer integration
-  private async sendEmail(to: string, subject: string, _html: string): Promise<void> {
-    // Simulate email sending delay
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    this.logger.debug(`Email sent to ${to}: ${subject}`);
-    // In production, this would use nodemailer or another email service
+  // Send email using nodemailer
+  private async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to,
+        subject,
+        html,
+      });
+      this.logger.debug(`Email sent to ${to}: ${subject}`);
+    } catch (error) {
+      this.logger.error(`Failed to send email to ${to}: ${error}`);
+      throw error; // Re-throw to trigger Bull retry
+    }
   }
 
-  // Email templates
-  private getVerificationTemplate(data: Record<string, unknown>): string {
+  // Email templates with professional styling
+  private getBaseTemplate(content: string): string {
     return `
-      <h1>Verify your email</h1>
-      <p>Hi ${data.name || 'there'},</p>
-      <p>Please verify your email by clicking the link below:</p>
-      <a href="${process.env.APP_URL || 'http://localhost:3000'}/verify-email?token=${data.token}">
-        Verify Email
-      </a>
-      <p>This link will expire in 24 hours.</p>
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">VeriHire</h1>
+          </div>
+          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+            ${content}
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              &copy; ${new Date().getFullYear()} VeriHire. All rights reserved.
+            </p>
+          </div>
+        </body>
+      </html>
     `;
+  }
+
+  private getVerificationTemplate(data: Record<string, unknown>): string {
+    const verifyUrl = `${this.appUrl}/auth/verify-email?token=${data.token}`;
+    return this.getBaseTemplate(`
+      <h2 style="color: #333;">Welcome to VeriHire!</h2>
+      <p>Hi ${data.name || 'there'},</p>
+      <p>Thanks for signing up! Please verify your email address to get started:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${verifyUrl}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Verify Email</a>
+      </div>
+      <p style="color: #666; font-size: 14px;">This link will expire in 24 hours.</p>
+      <p style="color: #666; font-size: 14px;">If you didn't create an account, you can safely ignore this email.</p>
+    `);
   }
 
   private getPasswordResetTemplate(data: Record<string, unknown>): string {
-    return `
-      <h1>Reset your password</h1>
+    const resetUrl = `${this.appUrl}/auth/reset-password?token=${data.token}`;
+    return this.getBaseTemplate(`
+      <h2 style="color: #333;">Reset Your Password</h2>
       <p>Hi ${data.name || 'there'},</p>
-      <p>You requested a password reset. Click the link below to set a new password:</p>
-      <a href="${process.env.APP_URL || 'http://localhost:3000'}/reset-password?token=${data.token}">
-        Reset Password
-      </a>
-      <p>This link will expire in 1 hour. If you didn't request this, please ignore this email.</p>
-    `;
+      <p>We received a request to reset your password. Click the button below to create a new password:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${resetUrl}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reset Password</a>
+      </div>
+      <p style="color: #666; font-size: 14px;">This link will expire in 1 hour for security reasons.</p>
+      <p style="color: #666; font-size: 14px;">If you didn't request a password reset, you can safely ignore this email.</p>
+    `);
   }
 
   private getWelcomeTemplate(data: Record<string, unknown>): string {
-    return `
-      <h1>Welcome to VeriHire!</h1>
+    return this.getBaseTemplate(`
+      <h2 style="color: #333;">Welcome to VeriHire!</h2>
       <p>Hi ${data.name || 'there'},</p>
       <p>Thank you for joining VeriHire, the AI-powered skill certification platform.</p>
       <p>Get started by:</p>
-      <ul>
+      <ul style="color: #666;">
         <li>Completing your profile</li>
         <li>Taking a skill challenge</li>
         <li>Earning your first certificate</li>
       </ul>
-      <a href="${process.env.APP_URL || 'http://localhost:3000'}/dashboard">Go to Dashboard</a>
-    `;
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.appUrl}/dashboard" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+      </div>
+    `);
   }
 
   private getCertificateIssuedTemplate(data: Record<string, unknown>): string {
-    return `
-      <h1>Congratulations! Your Certificate is Ready</h1>
+    return this.getBaseTemplate(`
+      <h2 style="color: #333;">Congratulations! Your Certificate is Ready</h2>
       <p>Hi ${data.candidateName || 'there'},</p>
       <p>You have successfully earned a certificate for <strong>${data.skillName || 'your skill'}</strong>!</p>
-      <p>Certificate Details:</p>
-      <ul>
-        <li>Certificate Number: ${data.certificateNumber || 'N/A'}</li>
-        <li>Score: ${data.score || 'N/A'}%</li>
-        <li>Grade: ${data.grade || 'N/A'}</li>
-      </ul>
-      <a href="${data.verificationUrl || '#'}">View Certificate</a>
-      <p>Share your achievement with employers and on social media!</p>
-    `;
+      <div style="background: #fff; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #ddd;">
+        <p style="margin: 5px 0;"><strong>Certificate Number:</strong> ${data.certificateNumber || 'N/A'}</p>
+        <p style="margin: 5px 0;"><strong>Score:</strong> ${data.score || 'N/A'}%</p>
+        <p style="margin: 5px 0;"><strong>Grade:</strong> ${data.grade || 'N/A'}</p>
+      </div>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${data.verificationUrl || '#'}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">View Certificate</a>
+      </div>
+      <p style="color: #666; font-size: 14px;">Share your achievement with employers and on social media!</p>
+    `);
   }
 
   private getReviewAssignedTemplate(data: Record<string, unknown>): string {
-    return `
-      <h1>New Review Assignment</h1>
+    return this.getBaseTemplate(`
+      <h2 style="color: #333;">New Review Assignment</h2>
       <p>Hi ${data.reviewerName || 'there'},</p>
       <p>You have been assigned a new submission to review.</p>
-      <p>Details:</p>
-      <ul>
-        <li>Skill: ${data.skillName || 'N/A'}</li>
-        <li>Challenge: ${data.challengeTitle || 'N/A'}</li>
-        <li>Deadline: ${data.deadline || 'N/A'}</li>
-      </ul>
-      <a href="${process.env.APP_URL || 'http://localhost:3000'}/reviews/${data.reviewId}">Start Review</a>
-    `;
+      <div style="background: #fff; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #ddd;">
+        <p style="margin: 5px 0;"><strong>Skill:</strong> ${data.skillName || 'N/A'}</p>
+        <p style="margin: 5px 0;"><strong>Challenge:</strong> ${data.challengeTitle || 'N/A'}</p>
+        <p style="margin: 5px 0;"><strong>Deadline:</strong> ${data.deadline || 'N/A'}</p>
+      </div>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.appUrl}/reviews/${data.reviewId}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Start Review</a>
+      </div>
+    `);
   }
 }

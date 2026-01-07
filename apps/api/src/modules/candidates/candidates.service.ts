@@ -1,8 +1,34 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { prisma, RemotePreference, JobSearchStatus, SkillLevel } from '@verihire/database';
+import { StorageService } from '../storage/storage.service';
+
+// Allowed resume file types
+const ALLOWED_RESUME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Allowed portfolio file types
+const ALLOWED_PORTFOLIO_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/zip',
+];
+const MAX_PORTFOLIO_SIZE = 50 * 1024 * 1024; // 50MB
 
 @Injectable()
 export class CandidatesService {
+  constructor(private readonly storageService: StorageService) {}
   async getProfile(candidateId: string) {
     const profile = await prisma.candidateProfile.findUnique({
       where: { id: candidateId },
@@ -447,5 +473,176 @@ export class CandidatesService {
         hasMore: offset + candidates.length < total,
       },
     };
+  }
+
+  // =========================================================================
+  // FILE UPLOADS
+  // =========================================================================
+
+  /**
+   * Upload candidate resume
+   */
+  async uploadResume(
+    candidateId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string; size: number }
+  ): Promise<{ url: string; key: string }> {
+    // Validate candidate exists
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    // Validate file type
+    if (!ALLOWED_RESUME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(`Invalid file type. Allowed types: PDF, DOC, DOCX`);
+    }
+
+    // Validate file size
+    if (file.size > MAX_RESUME_SIZE) {
+      throw new BadRequestException(
+        `File too large. Maximum size is ${MAX_RESUME_SIZE / (1024 * 1024)}MB`
+      );
+    }
+
+    // Delete old resume if exists
+    if (profile.resumeUrl) {
+      try {
+        const oldKey = profile.resumeUrl.split('/').slice(-3).join('/');
+        await this.storageService.deleteFile(oldKey);
+      } catch {
+        // Ignore errors when deleting old file
+      }
+    }
+
+    // Upload new resume
+    const result = await this.storageService.uploadResume(
+      candidateId,
+      file.buffer,
+      file.originalname
+    );
+
+    // Update candidate profile with new resume URL
+    await prisma.candidateProfile.update({
+      where: { id: candidateId },
+      data: { resumeUrl: result.url },
+    });
+
+    return { url: result.url, key: result.key };
+  }
+
+  /**
+   * Delete candidate resume
+   */
+  async deleteResume(candidateId: string): Promise<{ success: boolean }> {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    if (!profile.resumeUrl) {
+      throw new BadRequestException('No resume to delete');
+    }
+
+    // Extract key from URL
+    const key = profile.resumeUrl.split('/').slice(-3).join('/');
+
+    // Delete from storage
+    await this.storageService.deleteFile(key);
+
+    // Update profile
+    await prisma.candidateProfile.update({
+      where: { id: candidateId },
+      data: { resumeUrl: null },
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Upload portfolio file
+   */
+  async uploadPortfolioFile(
+    candidateId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string; size: number }
+  ): Promise<{ url: string; key: string; filename: string }> {
+    // Validate candidate exists
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    // Validate file type
+    if (!ALLOWED_PORTFOLIO_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Invalid file type. Allowed types: PDF, JPEG, PNG, GIF, WEBP, ZIP`
+      );
+    }
+
+    // Validate file size
+    if (file.size > MAX_PORTFOLIO_SIZE) {
+      throw new BadRequestException(
+        `File too large. Maximum size is ${MAX_PORTFOLIO_SIZE / (1024 * 1024)}MB`
+      );
+    }
+
+    // Upload portfolio file
+    const result = await this.storageService.uploadPortfolioFile(
+      candidateId,
+      file.buffer,
+      file.originalname
+    );
+
+    return {
+      url: result.url,
+      key: result.key,
+      filename: file.originalname,
+    };
+  }
+
+  /**
+   * List portfolio files for a candidate
+   */
+  async listPortfolioFiles(
+    candidateId: string
+  ): Promise<Array<{ key: string; url: string; size: number }>> {
+    // Validate candidate exists
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    const files = await this.storageService.listFiles(`candidates/${candidateId}/portfolio`);
+
+    return files.map(f => ({
+      key: f.key,
+      url: this.storageService.getFileUrl(f.key),
+      size: f.size,
+    }));
+  }
+
+  /**
+   * Delete portfolio file
+   */
+  async deletePortfolioFile(candidateId: string, fileKey: string): Promise<{ success: boolean }> {
+    // Validate the file belongs to this candidate
+    if (!fileKey.startsWith(`candidates/${candidateId}/portfolio/`)) {
+      throw new BadRequestException('Invalid file key');
+    }
+
+    await this.storageService.deleteFile(fileKey);
+
+    return { success: true };
   }
 }
