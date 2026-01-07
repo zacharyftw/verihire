@@ -1,4 +1,4 @@
-import { PrismaClient, UserType, SkillLevel, ChallengeDifficulty, ChallengeType } from '@prisma/client';
+import { PrismaClient, UserType, ChallengeDifficulty, ChallengeType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -7,7 +7,7 @@ async function main() {
 
   // Create skill categories
   console.log('📁 Creating skill categories...');
-  
+
   const programmingCategory = await prisma.skillCategory.upsert({
     where: { slug: 'programming' },
     update: {},
@@ -82,7 +82,7 @@ async function main() {
     { name: 'Vue.js', slug: 'vuejs', categoryId: frontendCategory.id, passThreshold: 60 },
     { name: 'CSS/SCSS', slug: 'css-scss', categoryId: frontendCategory.id, passThreshold: 55 },
     { name: 'Tailwind CSS', slug: 'tailwind', categoryId: frontendCategory.id, passThreshold: 55 },
-    
+
     // Backend skills
     { name: 'Node.js', slug: 'nodejs', categoryId: backendCategory.id, passThreshold: 65 },
     { name: 'Python', slug: 'python', categoryId: backendCategory.id, passThreshold: 65 },
@@ -92,14 +92,34 @@ async function main() {
     { name: 'PostgreSQL', slug: 'postgresql', categoryId: backendCategory.id, passThreshold: 60 },
     { name: 'MongoDB', slug: 'mongodb', categoryId: backendCategory.id, passThreshold: 60 },
     { name: 'GraphQL', slug: 'graphql', categoryId: backendCategory.id, passThreshold: 60 },
-    { name: 'REST API Design', slug: 'rest-api', categoryId: backendCategory.id, passThreshold: 60 },
-    
+    {
+      name: 'REST API Design',
+      slug: 'rest-api',
+      categoryId: backendCategory.id,
+      passThreshold: 60,
+    },
+
     // Data science skills
-    { name: 'Machine Learning', slug: 'machine-learning', categoryId: dataCategory.id, passThreshold: 65 },
-    { name: 'Deep Learning', slug: 'deep-learning', categoryId: dataCategory.id, passThreshold: 70 },
-    { name: 'Data Analysis', slug: 'data-analysis', categoryId: dataCategory.id, passThreshold: 60 },
+    {
+      name: 'Machine Learning',
+      slug: 'machine-learning',
+      categoryId: dataCategory.id,
+      passThreshold: 65,
+    },
+    {
+      name: 'Deep Learning',
+      slug: 'deep-learning',
+      categoryId: dataCategory.id,
+      passThreshold: 70,
+    },
+    {
+      name: 'Data Analysis',
+      slug: 'data-analysis',
+      categoryId: dataCategory.id,
+      passThreshold: 60,
+    },
     { name: 'SQL', slug: 'sql', categoryId: dataCategory.id, passThreshold: 60 },
-    
+
     // Design skills
     { name: 'UI Design', slug: 'ui-design', categoryId: designCategory.id, passThreshold: 55 },
     { name: 'UX Design', slug: 'ux-design', categoryId: designCategory.id, passThreshold: 55 },
@@ -255,7 +275,7 @@ main()
   .then(async () => {
     await prisma.$disconnect();
   })
-  .catch(async (e) => {
+  .catch(async e => {
     console.error('❌ Seed failed:', e);
     await prisma.$disconnect();
     process.exit(1);
