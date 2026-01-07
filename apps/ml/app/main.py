@@ -7,9 +7,14 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import code_router, health_router, matching_router, text_router
+from app.api.routes import code_router, health_router, matching_router, review_router, text_router
 from app.core.config import get_settings
-from app.services import get_bert_service, get_codebert_service, get_ncf_service
+from app.services import (
+    get_bert_service,
+    get_codebert_service,
+    get_ncf_service,
+    get_review_quality_service,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +45,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Load NCF
         ncf = get_ncf_service()
         ncf.load_model()
+
+        # Load Review Quality Service
+        review_quality = get_review_quality_service()
+        review_quality.load_model()
 
         logger.info("All models loaded successfully")
     except Exception as e:
@@ -78,6 +87,13 @@ Evaluate written responses using BERT. Analyzes:
 - Depth of analysis
 - Clarity of expression
 
+### Review Quality Analysis
+Analyze peer review quality and detect anomalies:
+- Effort and thoroughness scoring
+- Bias detection (harshness, leniency, halo effect)
+- Specificity and consistency checks
+- Collusion and pattern detection
+
 ### Candidate Matching (NCF)
 Match candidates to jobs using Neural Collaborative Filtering:
 - Skill-based matching with proficiency levels
@@ -103,6 +119,7 @@ Match candidates to jobs using Neural Collaborative Filtering:
     app.include_router(code_router, prefix=settings.api_v1_prefix)
     app.include_router(text_router, prefix=settings.api_v1_prefix)
     app.include_router(matching_router, prefix=settings.api_v1_prefix)
+    app.include_router(review_router, prefix=settings.api_v1_prefix)
 
     return app
 

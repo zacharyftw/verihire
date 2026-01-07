@@ -234,3 +234,140 @@ class HealthResponse(BaseModel):
     version: str = Field(..., description="Service version")
     timestamp: datetime = Field(..., description="Response timestamp")
     models: list[ModelStatus] | None = Field(None, description="Model statuses")
+
+
+# ============ Peer Review Quality Analysis Schemas ============
+
+
+class BiasType(str, Enum):
+    """Types of bias that can be detected in reviews."""
+
+    HARSHNESS = "harshness"
+    LENIENCY = "leniency"
+    HALO_EFFECT = "halo_effect"
+    CENTRAL_TENDENCY = "central_tendency"
+    SCORE_FEEDBACK_MISMATCH = "score_feedback_mismatch"
+    NONE = "none"
+
+
+class CriterionScore(BaseModel):
+    """Individual criterion score in a review."""
+
+    criterion_id: str = Field(..., description="Criterion identifier")
+    criterion_name: str = Field(..., description="Name of the criterion")
+    score: float = Field(..., ge=0, le=100, description="Score given (0-100)")
+    weight: float = Field(default=1.0, ge=0, le=1, description="Weight of this criterion")
+    justification: str = Field(..., description="Justification for the score")
+
+
+class ReviewQualityRequest(BaseModel):
+    """Request to analyze review quality."""
+
+    review_id: str = Field(..., description="Review identifier")
+    reviewer_id: str = Field(..., description="Reviewer identifier")
+
+    # Review content
+    criteria_scores: list[CriterionScore] = Field(..., description="Scores for each criterion")
+    overall_score: float = Field(..., ge=0, le=100, description="Overall score given")
+    strengths: str = Field(..., description="Strengths feedback text")
+    areas_for_improvement: str = Field(..., description="Areas for improvement text")
+    suggestions: str | None = Field(None, description="Additional suggestions")
+
+    # Submission context
+    submission_content: str = Field(..., description="The submission being reviewed")
+    submission_type: str = Field(default="code", description="Type: code, written, design")
+
+    # Review metadata
+    time_spent_seconds: int = Field(..., description="Time spent on review in seconds")
+    expected_time_seconds: int = Field(default=600, description="Expected review time")
+
+    # Reviewer history for bias detection
+    reviewer_average_score: float | None = Field(
+        None, description="Reviewer's historical average score"
+    )
+    reviewer_score_stddev: float | None = Field(
+        None, description="Reviewer's historical score standard deviation"
+    )
+
+
+class ReviewQualityMetrics(BaseModel):
+    """Detailed metrics for review quality."""
+
+    effort_score: float = Field(..., ge=0, le=1, description="Effort/thoroughness score")
+    specificity_score: float = Field(..., ge=0, le=1, description="Specificity to submission")
+    consistency_score: float = Field(..., ge=0, le=1, description="Internal consistency")
+    rubric_alignment_score: float = Field(..., ge=0, le=1, description="Alignment with rubric")
+    feedback_quality_score: float = Field(..., ge=0, le=1, description="Quality of feedback text")
+
+
+class BiasAnalysis(BaseModel):
+    """Bias detection analysis result."""
+
+    bias_detected: bool = Field(..., description="Whether bias was detected")
+    bias_type: BiasType = Field(..., description="Type of bias if detected")
+    bias_probability: float = Field(..., ge=0, le=1, description="Probability of bias")
+    details: str | None = Field(None, description="Details about detected bias")
+
+
+class ReviewQualityResponse(BaseModel):
+    """Response for review quality analysis."""
+
+    review_id: str = Field(..., description="Review identifier")
+    overall_quality: float = Field(..., ge=0, le=1, description="Overall quality score 0-1")
+    metrics: ReviewQualityMetrics = Field(..., description="Detailed quality metrics")
+    bias_analysis: BiasAnalysis = Field(..., description="Bias detection result")
+    is_valid: bool = Field(..., description="Whether review meets quality threshold")
+    feedback_for_reviewer: list[str] = Field(
+        default_factory=list, description="Feedback to improve reviewing"
+    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+
+
+class AnomalyType(str, Enum):
+    """Types of anomalies in review patterns."""
+
+    RUBBER_STAMPING = "rubber_stamping"
+    COPY_PASTE_FEEDBACK = "copy_paste_feedback"
+    TIMING_ANOMALY = "timing_anomaly"
+    RECIPROCAL_HIGH_SCORING = "reciprocal_high_scoring"
+    COLLUSION_RING = "collusion_ring"
+    AUTOENCODER_ANOMALY = "autoencoder_anomaly"
+
+
+class ReviewPattern(BaseModel):
+    """A single review for pattern analysis."""
+
+    review_id: str = Field(..., description="Review identifier")
+    reviewer_id: str = Field(..., description="Reviewer identifier")
+    candidate_id: str = Field(..., description="Candidate who submitted")
+    overall_score: float = Field(..., ge=0, le=100, description="Score given")
+    criteria_scores: list[float] = Field(..., description="List of criterion scores")
+    feedback_text: str = Field(..., description="Combined feedback text")
+    time_spent_seconds: int = Field(..., description="Time spent reviewing")
+    submitted_at: datetime = Field(..., description="When review was submitted")
+
+
+class AnomalyDetectionRequest(BaseModel):
+    """Request to detect anomalies in review patterns."""
+
+    reviews: list[ReviewPattern] = Field(..., description="Reviews to analyze")
+    time_window_days: int = Field(default=30, description="Time window for analysis")
+
+
+class AnomalyResult(BaseModel):
+    """Individual anomaly detection result."""
+
+    anomaly_type: AnomalyType = Field(..., description="Type of anomaly")
+    confidence: float = Field(..., ge=0, le=1, description="Confidence level")
+    affected_review_ids: list[str] = Field(default_factory=list, description="Affected reviews")
+    affected_user_ids: list[str] = Field(default_factory=list, description="Affected users")
+    details: dict[str, Any] = Field(default_factory=dict, description="Additional details")
+
+
+class AnomalyDetectionResponse(BaseModel):
+    """Response for anomaly detection."""
+
+    anomalies: list[AnomalyResult] = Field(..., description="Detected anomalies")
+    total_reviews_analyzed: int = Field(..., description="Number of reviews analyzed")
+    flagged_reviews_count: int = Field(..., description="Number of flagged reviews")
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
