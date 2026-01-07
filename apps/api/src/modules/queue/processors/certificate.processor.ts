@@ -3,10 +3,14 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { QUEUE_NAMES } from '../constants';
 import { CertificateJobData } from '../queue.service';
+import { BlockchainService } from '../../blockchain/blockchain.service';
+import { prisma } from '@verihire/database';
 
 @Processor(QUEUE_NAMES.CERTIFICATE)
 export class CertificateProcessor {
   private readonly logger = new Logger(CertificateProcessor.name);
+
+  constructor(private blockchainService: BlockchainService) {}
 
   @OnQueueActive()
   onActive(job: Job<CertificateJobData>) {
@@ -81,17 +85,28 @@ export class CertificateProcessor {
 
   @Process('anchor-blockchain')
   async handleAnchorBlockchain(job: Job<CertificateJobData>) {
-    const { certificateId } = job.data;
+    const { certificateId, data } = job.data;
     this.logger.log(`Anchoring certificate ${certificateId} to blockchain`);
 
-    // This will be integrated with the blockchain service
-    await this.simulateProcessing(1000);
+    const certificateNumber = data?.certificateNumber as string;
+    const hash = data?.hash as string;
+
+    const result = await this.blockchainService.anchorCertificate(certificateNumber, hash);
+
+    await prisma.certificate.update({
+      where: { id: certificateId },
+      data: {
+        blockchainTxId: result.txHash,
+        blockchainNetwork: result.network,
+        blockNumber: BigInt(result.blockNumber),
+      },
+    });
 
     return {
       certificateId,
       status: 'anchored',
-      // In production, this would return the transaction hash
-      txHash: `0x${Math.random().toString(16).substring(2)}`,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
     };
   }
 

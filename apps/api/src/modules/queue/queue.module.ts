@@ -6,9 +6,11 @@ import { EmailProcessor } from './processors/email.processor';
 import { CertificateProcessor } from './processors/certificate.processor';
 import { EvaluationProcessor } from './processors/evaluation.processor';
 import { QUEUE_NAMES } from './constants';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
   imports: [
+    BlockchainModule,
     // Bull configuration with Redis
     BullModule.forRootAsync({
       imports: [ConfigModule],
