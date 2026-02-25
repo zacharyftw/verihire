@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.services import (
     get_bert_service,
     get_codebert_service,
+    get_groq_service,
     get_ncf_service,
     get_review_quality_service,
 )
@@ -30,19 +31,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
-    # Load models on startup (in background to not block)
     try:
-        logger.info("Loading ML models...")
+        logger.info("Initializing services...")
 
-        # Load CodeBERT
+        # Initialize Groq (required for code/text evaluation)
+        groq = get_groq_service()
+        groq.initialize()
+
+        # Point code/text services at the initialized Groq client
         codebert = get_codebert_service()
         codebert.load_model()
 
-        # Load BERT
         bert = get_bert_service()
         bert.load_model()
 
-        # Load NCF
+        # Load NCF (numpy-based, lightweight)
         ncf = get_ncf_service()
         ncf.load_model()
 
@@ -50,14 +53,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         review_quality = get_review_quality_service()
         review_quality.load_model()
 
-        logger.info("All models loaded successfully")
+        logger.info("All services initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to load models: {e}")
+        logger.error(f"Failed to initialize services: {e}")
         logger.warning("Service starting in degraded mode - some endpoints may not work")
 
     yield
 
-    # Cleanup on shutdown
     logger.info("Shutting down ML service")
 
 
@@ -73,15 +75,15 @@ VeriHire ML Service provides AI/ML capabilities for skill evaluation and candida
 
 ## Features
 
-### Code Evaluation (CodeBERT)
-Evaluate code quality using Microsoft's CodeBERT model. Analyzes:
+### Code Evaluation (Groq LLM)
+Evaluate code quality using Llama 3.3 70B via Groq. Analyzes:
 - Complexity and readability
 - Security vulnerabilities
 - Best practices adherence
 - Maintainability
 
-### Text Evaluation (BERT)
-Evaluate written responses using BERT. Analyzes:
+### Text Evaluation (Groq LLM)
+Evaluate written responses using Llama 3.3 70B via Groq. Analyzes:
 - Relevance to question/topic
 - Coherence and logical flow
 - Depth of analysis

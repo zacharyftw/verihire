@@ -28,28 +28,14 @@ class Settings(BaseSettings):
     # Redis configuration
     redis_url: str = "redis://localhost:6379"
 
-    # Model configuration
-    model_cache_dir: str = "/tmp/verihire-models"
-    device: Literal["cuda", "cpu", "auto"] = "auto"
+    # Groq configuration
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_timeout_seconds: float = 30.0
+    groq_max_retries: int = 2
 
-    # Model names (Hugging Face)
-    codebert_model: str = "microsoft/codebert-base"
-    bert_model: str = "bert-base-uncased"
-
-    # Fine-tuned classifier paths (set to enable ML-based scoring)
-    # When these paths point to valid .pt files, the service will use
-    # the trained classification heads instead of heuristic scoring
-    code_quality_classifier_path: str | None = None
-    text_quality_classifier_path: str | None = None
-
-    # Scoring mode: "ml" uses trained classifiers, "heuristic" uses rule-based
-    # "hybrid" blends both approaches
-    scoring_mode: Literal["ml", "heuristic", "hybrid"] = "heuristic"
-    hybrid_ml_weight: float = 0.7  # Weight for ML scores in hybrid mode
-
-    # Scoring thresholds
-    code_quality_threshold: float = 0.7
-    text_quality_threshold: float = 0.7
+    # Scoring mode: "groq" uses Groq LLM, "heuristic" uses rule-based
+    scoring_mode: Literal["groq", "heuristic"] = "groq"
 
     # NCF configuration
     ncf_embedding_dim: int = 64
