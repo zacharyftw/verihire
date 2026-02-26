@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import type { Certificate } from '@verihire/types';
+import type { Certificate } from '@/lib/types';
 import { API_URL } from '@/lib/constants';
 
 export function useMyCertificates() {

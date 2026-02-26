@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { api } from '@/lib/api';
-import type { Challenge } from '@verihire/types';
+import type { Challenge } from '@/lib/types';
 
 interface ChallengeFilters {
   skillId?: string;
