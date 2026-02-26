@@ -2,9 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@verihire/types', '@verihire/utils'],
-  experimental: {
-    typedRoutes: true,
-  },
+  experimental: {},
 };
 
 module.exports = nextConfig;
