@@ -24,6 +24,8 @@ export default function SubmissionResultsPage() {
   const evaluation = data.evaluation || data;
 
   const isPassing = submission.finalScore != null && submission.finalScore >= 70;
+  const isWaiting = ['SUBMITTED', 'EVALUATING'].includes(submission.status);
+  const hasResults = submission.finalScore != null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -49,16 +51,47 @@ export default function SubmissionResultsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {submission.status === 'EVALUATING' && (
-            <div className="flex items-center gap-3 rounded-lg bg-blue-50 p-4 text-blue-800">
-              <Clock className="h-5 w-5" />
-              <p className="text-sm">
-                Your submission is being evaluated. Results will appear shortly.
-              </p>
+          {isWaiting && !hasResults && (
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+                <Clock className="h-8 w-8 animate-pulse text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Your submission is being evaluated</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Our AI is analyzing your code for correctness, quality, and performance.
+                  <br />
+                  This usually takes a few moments.
+                </p>
+              </div>
+              <div className="w-full max-w-xs">
+                <Progress value={submission.status === 'EVALUATING' ? 60 : 30} className="h-2" />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {submission.status === 'EVALUATING'
+                    ? 'Analyzing your code...'
+                    : 'Queued for evaluation...'}
+                </p>
+              </div>
             </div>
           )}
 
-          {submission.finalScore != null && (
+          {submission.status === 'FAILED' && !hasResults && (
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <XCircle className="h-8 w-8 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Evaluation Failed</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Something went wrong while evaluating your submission.
+                  <br />
+                  Please try submitting again or contact support.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {hasResults && (
             <>
               <div className="text-center">
                 <div
@@ -116,7 +149,7 @@ export default function SubmissionResultsPage() {
             </div>
           )}
 
-          {submission.finalScore != null && isPassing && (
+          {hasResults && isPassing && (
             <>
               <Separator />
               <div className="text-center">

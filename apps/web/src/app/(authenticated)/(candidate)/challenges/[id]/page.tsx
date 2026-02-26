@@ -14,10 +14,62 @@ import { startSubmission, useActiveSubmission } from '@/hooks/use-submissions';
 import { ROUTES, DIFFICULTY_LABELS, DIFFICULTY_COLORS } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
 
-function formatRequirements(req: Record<string, unknown> | string | null): string {
-  if (!req) return '';
-  if (typeof req === 'string') return req;
-  return JSON.stringify(req, null, 2);
+function parseJsonField(value: unknown): unknown {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function RequirementsList({ data }: { data: unknown }) {
+  const parsed = parseJsonField(data);
+  if (!parsed) return null;
+
+  // Array of strings (e.g. ["Implement a function...", ...])
+  if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+    return (
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        {parsed.map((item: string, i: number) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  // Plain string
+  if (typeof parsed === 'string') {
+    return <p className="text-sm text-muted-foreground">{parsed}</p>;
+  }
+
+  // Fallback for other shapes
+  return <p className="text-sm text-muted-foreground">{JSON.stringify(parsed, null, 2)}</p>;
+}
+
+function CriteriaList({ data }: { data: unknown }) {
+  const parsed = parseJsonField(data);
+  if (!parsed) return null;
+
+  // Array of {name, weight} objects
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.name) {
+    return (
+      <div className="space-y-2">
+        {parsed.map((item: { name: string; weight: number }, i: number) => (
+          <div key={i} className="flex items-center justify-between rounded-md border px-3 py-2">
+            <span className="text-sm">{item.name}</span>
+            <Badge variant="outline">{Math.round(item.weight * 100)}%</Badge>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Fallback
+  return <RequirementsList data={data} />;
 }
 
 export default function ChallengeDetailPage() {
@@ -46,9 +98,6 @@ export default function ChallengeDetailPage() {
       setStarting(false);
     }
   }
-
-  const reqText = formatRequirements(challenge.requirements);
-  const criteriaText = formatRequirements(challenge.evaluationCriteria);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -95,22 +144,20 @@ export default function ChallengeDetailPage() {
             </div>
           </div>
 
-          {reqText && (
+          {challenge.requirements && (
             <>
               <Separator />
               <div>
                 <h3 className="mb-2 font-medium">Requirements</h3>
-                <div className="whitespace-pre-wrap text-sm text-muted-foreground">{reqText}</div>
+                <RequirementsList data={challenge.requirements} />
               </div>
             </>
           )}
 
-          {criteriaText && (
+          {challenge.evaluationCriteria && (
             <div>
               <h3 className="mb-2 font-medium">Evaluation Criteria</h3>
-              <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {criteriaText}
-              </div>
+              <CriteriaList data={challenge.evaluationCriteria} />
             </div>
           )}
 

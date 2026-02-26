@@ -24,7 +24,123 @@ import {
   submitSolution,
 } from '@/hooks/use-submissions';
 import { ROUTES } from '@/lib/constants';
+import { api } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+
+function parseAndRenderRequirements(data: unknown): React.ReactNode {
+  if (!data) return 'No specific requirements provided.';
+  let parsed = data;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return parsed as string;
+    }
+  }
+  if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+    return (
+      <ul className="list-disc space-y-1 pl-5">
+        {parsed.map((item: string, i: number) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof parsed === 'string') return parsed;
+  return JSON.stringify(parsed, null, 2);
+}
+
+/**
+ * Parse JS/TS function signatures from starter code and convert to the target language.
+ */
+function convertStarterCode(jsCode: string, targetLang: string): string {
+  if (targetLang === 'javascript' || targetLang === 'typescript') return jsCode;
+
+  // Extract functions: name and params
+  const fnRegex = /function\s+(\w+)\s*\(([^)]*)\)\s*\{[^}]*\/\/\s*Your code here[^}]*\}/g;
+  const functions: { name: string; params: string[] }[] = [];
+  let match;
+  while ((match = fnRegex.exec(jsCode)) !== null) {
+    functions.push({
+      name: match[1],
+      params: match[2]
+        .split(',')
+        .map(p => p.trim())
+        .filter(Boolean),
+    });
+  }
+
+  if (!functions.length) return `// Implement your solution here\n`;
+
+  // Also extract top-level comments
+  const commentMatch = jsCode.match(/^\/\/\s*(.+)/);
+  const topComment = commentMatch ? commentMatch[1] : 'Implement your solution';
+
+  switch (targetLang) {
+    case 'python':
+      return [
+        `# ${topComment}`,
+        '',
+        ...functions.map(
+          fn =>
+            `def ${toSnakeCase(fn.name)}(${fn.params.join(', ')}):\n    # Your code here\n    pass`
+        ),
+      ].join('\n\n');
+
+    case 'java':
+      return [
+        `// ${topComment}`,
+        '',
+        'public class Solution {',
+        ...functions.map(
+          fn =>
+            `    public static Object ${fn.name}(${fn.params.map(p => `Object ${p}`).join(', ')}) {\n        // Your code here\n        return null;\n    }`
+        ),
+        '}',
+      ].join('\n\n');
+
+    case 'cpp':
+      return [
+        `// ${topComment}`,
+        '#include <vector>',
+        '#include <algorithm>',
+        'using namespace std;',
+        '',
+        ...functions.map(
+          fn =>
+            `auto ${fn.name}(${fn.params.map(p => `auto ${p}`).join(', ')}) {\n    // Your code here\n}`
+        ),
+      ].join('\n\n');
+
+    case 'go':
+      return [
+        `// ${topComment}`,
+        'package main',
+        '',
+        ...functions.map(
+          fn =>
+            `func ${fn.name}(${fn.params.map(p => `${p} interface{}`).join(', ')}) interface{} {\n\t// Your code here\n\treturn nil\n}`
+        ),
+      ].join('\n\n');
+
+    case 'rust':
+      return [
+        `// ${topComment}`,
+        '',
+        ...functions.map(
+          fn =>
+            `fn ${toSnakeCase(fn.name)}(${fn.params.map(p => `${p}: Vec<i32>`).join(', ')}) -> Vec<i32> {\n    // Your code here\n    vec![]\n}`
+        ),
+      ].join('\n\n');
+
+    default:
+      return jsCode;
+  }
+}
+
+function toSnakeCase(s: string): string {
+  return s.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+}
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(mod => mod.default), {
   ssr: false,
@@ -55,16 +171,39 @@ export default function SubmitChallengePage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const hasUserEdited = useRef(false);
+  const lastGeneratedCode = useRef<string>('');
 
   // Initialize code from active submission or starter code
   useEffect(() => {
     if (activeSubmission?.content) {
       setCode(activeSubmission.content);
       if (activeSubmission.language) setLanguage(activeSubmission.language);
+      hasUserEdited.current = true;
     } else if (challenge?.starterCode) {
-      setCode(challenge.starterCode);
+      const initial = challenge.starterCode;
+      setCode(initial);
+      lastGeneratedCode.current = initial;
     }
   }, [activeSubmission, challenge]);
+
+  function handleLanguageChange(newLang: string) {
+    setLanguage(newLang);
+    // Only swap boilerplate if user hasn't manually edited beyond starter code
+    if (!hasUserEdited.current && challenge?.starterCode) {
+      const converted = convertStarterCode(challenge.starterCode, newLang);
+      setCode(converted);
+      lastGeneratedCode.current = converted;
+    }
+  }
+
+  function handleCodeChange(value: string | undefined) {
+    const val = value || '';
+    setCode(val);
+    if (val !== lastGeneratedCode.current) {
+      hasUserEdited.current = true;
+    }
+  }
 
   // Timer
   useEffect(() => {
@@ -110,25 +249,28 @@ export default function SubmitChallengePage() {
   }
 
   async function handleSubmit() {
-    if (!activeSubmission?.id) {
-      // Start a new submission first
-      try {
-        const sub = await startSubmission(id);
-        await submitSolution(sub.id, { content: code, language });
-        router.push(ROUTES.submissionResults(sub.id));
-      } catch (err) {
-        toast({
-          title: 'Submission failed',
-          description: err instanceof Error ? err.message : 'Something went wrong',
-          variant: 'destructive',
-        });
-      }
-      return;
-    }
-
     setSubmitting(true);
     try {
-      const result = await submitSolution(activeSubmission.id, { content: code, language });
+      let subId = activeSubmission?.id;
+
+      // If no active submission loaded, try starting one (may already exist)
+      if (!subId) {
+        try {
+          const sub = await startSubmission(id);
+          subId = sub.id;
+        } catch {
+          // If start fails (already exists), re-fetch the active submission
+          const fetched = await api.get<{ id: string }>(`/submissions/active/${id}`);
+          subId = fetched?.id;
+        }
+      }
+
+      if (!subId) {
+        toast({ title: 'No active submission found', variant: 'destructive' });
+        return;
+      }
+
+      const result = await submitSolution(subId, { content: code, language });
       toast({ title: 'Solution submitted!' });
       router.push(ROUTES.submissionResults(result.id));
     } catch (err) {
@@ -170,7 +312,7 @@ export default function SubmitChallengePage() {
               {formatTime(timeLeft)}
             </div>
           )}
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={language} onValueChange={handleLanguageChange}>
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
@@ -199,7 +341,7 @@ export default function SubmitChallengePage() {
             height="100%"
             language={language}
             value={code}
-            onChange={value => setCode(value || '')}
+            onChange={handleCodeChange}
             theme="vs-dark"
             options={{
               minimap: { enabled: false },
@@ -216,12 +358,8 @@ export default function SubmitChallengePage() {
             <CardTitle className="text-sm">Requirements</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-              {challenge?.requirements
-                ? typeof challenge.requirements === 'string'
-                  ? challenge.requirements
-                  : JSON.stringify(challenge.requirements, null, 2)
-                : 'No specific requirements provided.'}
+            <div className="text-sm text-muted-foreground">
+              {parseAndRenderRequirements(challenge?.requirements)}
             </div>
           </CardContent>
         </Card>
