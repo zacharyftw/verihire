@@ -2,7 +2,6 @@
 export const QUEUE_NAMES = {
   EMAIL: 'email',
   CERTIFICATE: 'certificate',
-  EVALUATION: 'evaluation',
   BLOCKCHAIN: 'blockchain',
 } as const;
 

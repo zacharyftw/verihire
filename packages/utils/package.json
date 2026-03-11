@@ -21,9 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "nanoid": "^5.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@verihire/config": "workspace:*",
     "tsup": "^8.0.0",

@@ -17,12 +17,6 @@ export interface CertificateJobData {
   data?: Record<string, unknown>;
 }
 
-export interface EvaluationJobData {
-  type: 'ai-evaluation' | 'ml-scoring' | 'test-execution';
-  submissionId: string;
-  data?: Record<string, unknown>;
-}
-
 export interface BlockchainJobData {
   type: 'anchor-certificate' | 'verify-certificate' | 'batch-anchor';
   certificateId?: string;
@@ -38,7 +32,6 @@ export class QueueService {
   constructor(
     @InjectQueue(QUEUE_NAMES.EMAIL) private emailQueue: Queue<EmailJobData>,
     @InjectQueue(QUEUE_NAMES.CERTIFICATE) private certificateQueue: Queue<CertificateJobData>,
-    @InjectQueue(QUEUE_NAMES.EVALUATION) private evaluationQueue: Queue<EvaluationJobData>,
     @InjectQueue(QUEUE_NAMES.BLOCKCHAIN) private blockchainQueue: Queue<BlockchainJobData>
   ) {}
 
@@ -126,41 +119,6 @@ export class QueueService {
     });
   }
 
-  // Evaluation Queue Methods
-  async addEvaluationJob(data: EvaluationJobData, options?: JobOptions) {
-    const job = await this.evaluationQueue.add(data.type, data, {
-      ...options,
-    });
-    this.logger.log(
-      `Evaluation job ${job.id} added: ${data.type} for submission ${data.submissionId}`
-    );
-    return job;
-  }
-
-  async queueAiEvaluation(submissionId: string, data?: Record<string, unknown>) {
-    return this.addEvaluationJob({
-      type: 'ai-evaluation',
-      submissionId,
-      data,
-    });
-  }
-
-  async queueMlScoring(submissionId: string, data?: Record<string, unknown>) {
-    return this.addEvaluationJob({
-      type: 'ml-scoring',
-      submissionId,
-      data,
-    });
-  }
-
-  async queueTestExecution(submissionId: string, data?: Record<string, unknown>) {
-    return this.addEvaluationJob({
-      type: 'test-execution',
-      submissionId,
-      data,
-    });
-  }
-
   // Blockchain Queue Methods
   async addBlockchainJob(data: BlockchainJobData, options?: JobOptions) {
     const job = await this.blockchainQueue.add(data.type, data, {
@@ -170,34 +128,17 @@ export class QueueService {
     return job;
   }
 
-  async anchorCertificateOnChain(certificateId: string, hash: string) {
-    return this.addBlockchainJob({
-      type: 'anchor-certificate',
-      certificateId,
-      hash,
-    });
-  }
-
-  async batchAnchorCertificates(certificateIds: string[]) {
-    return this.addBlockchainJob({
-      type: 'batch-anchor',
-      certificateIds,
-    });
-  }
-
   // Queue Status Methods
   async getQueueStats() {
-    const [emailStats, certStats, evalStats, blockchainStats] = await Promise.all([
+    const [emailStats, certStats, blockchainStats] = await Promise.all([
       this.getQueueCounts(this.emailQueue),
       this.getQueueCounts(this.certificateQueue),
-      this.getQueueCounts(this.evaluationQueue),
       this.getQueueCounts(this.blockchainQueue),
     ]);
 
     return {
       email: emailStats,
       certificate: certStats,
-      evaluation: evalStats,
       blockchain: blockchainStats,
     };
   }
@@ -215,7 +156,6 @@ export class QueueService {
   }
 
   private getEmailPriority(type: EmailJobData['type']): number {
-    // Lower number = higher priority
     switch (type) {
       case 'password-reset':
         return 1;
@@ -241,7 +181,6 @@ export class QueueService {
     const queues: Record<string, Queue> = {
       EMAIL: this.emailQueue,
       CERTIFICATE: this.certificateQueue,
-      EVALUATION: this.evaluationQueue,
       BLOCKCHAIN: this.blockchainQueue,
     };
 
@@ -258,7 +197,6 @@ export class QueueService {
     const queues: Record<string, Queue> = {
       EMAIL: this.emailQueue,
       CERTIFICATE: this.certificateQueue,
-      EVALUATION: this.evaluationQueue,
       BLOCKCHAIN: this.blockchainQueue,
     };
 
@@ -273,7 +211,6 @@ export class QueueService {
     const queues: Record<string, Queue> = {
       EMAIL: this.emailQueue,
       CERTIFICATE: this.certificateQueue,
-      EVALUATION: this.evaluationQueue,
       BLOCKCHAIN: this.blockchainQueue,
     };
 
