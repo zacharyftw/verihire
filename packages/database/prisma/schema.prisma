@@ -345,6 +345,11 @@ enum ChallengeType {
   MIXED
 }
 
+enum ChallengeCategory {
+  GENERAL_SWE
+  DOMAIN_SPECIFIC
+}
+
 model ChallengeTemplate {
   id          String @id @default(uuid()) @db.Uuid
   skillId     String? @map("skill_id") @db.Uuid
@@ -391,14 +396,18 @@ model Challenge {
   requirements Json?
 
   // For coding
-  testCases   Json? @map("test_cases")
-  starterCode String? @map("starter_code") @db.Text
+  testCases         Json?   @map("test_cases")
+  starterCode       String? @map("starter_code") @db.Text
+  referenceSolution String? @map("reference_solution") @db.Text
+  solutionLanguage  String? @map("solution_language") @db.VarChar(50)
 
   // Configuration
   difficulty         ChallengeDifficulty?
   type               ChallengeType?
-  timeLimitMinutes   Int? @map("time_limit_minutes")
-  evaluationCriteria Json? @map("evaluation_criteria")
+  category           ChallengeCategory  @default(GENERAL_SWE)
+  supportedLanguages Json?              @map("supported_languages")
+  timeLimitMinutes   Int?               @map("time_limit_minutes")
+  evaluationCriteria Json?              @map("evaluation_criteria")
 
   // Metadata
   generatedAt     DateTime @default(now()) @map("generated_at") @db.Timestamptz

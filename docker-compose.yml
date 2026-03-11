@@ -35,25 +35,6 @@ services:
       timeout: 5s
       retries: 5
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
-    container_name: verihire-elasticsearch
-    restart: unless-stopped
-    ports:
-      - '9200:9200'
-      - '9300:9300'
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -s http://localhost:9200/_cluster/health | grep -q green']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   # MinIO for local S3-compatible storage
   minio:
     image: minio/minio:latest
@@ -83,45 +64,94 @@ services:
       - '1025:1025' # SMTP
       - '8025:8025' # Web UI
 
-  # ML Service for AI evaluation and candidate matching
-  ml:
-    build:
-      context: ./apps/ml
-      dockerfile: Dockerfile
-    container_name: verihire-ml
+  # Judge0 CE - Code Execution Sandbox
+  judge0-server:
+    image: judge0/judge0-ce:1.13.1
+    container_name: verihire-judge0-server
     restart: unless-stopped
     ports:
-      - '4200:4200'
+      - '2358:2358'
     environment:
-      - HOST=0.0.0.0
-      - PORT=4200
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-verihire_dev}@redis:6379
-      - MODEL_CACHE_DIR=/tmp/verihire-models
-      - DEVICE=cpu
-      - LOG_LEVEL=INFO
-    volumes:
-      - ml_model_cache:/tmp/verihire-models
+      - POSTGRES_HOST=judge0-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0_dev
+      - POSTGRES_DB=judge0
+      - REDIS_HOST=judge0-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=judge0_dev
+      - RAILS_MAX_THREADS=4
+      - RAILS_ENV=production
+      - ALLOW_ORIGIN=*
     depends_on:
-      - redis
+      judge0-postgres:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
+    privileged: true
+
+  judge0-worker:
+    image: judge0/judge0-ce:1.13.1
+    container_name: verihire-judge0-worker
+    restart: unless-stopped
+    command: ['./scripts/workers']
+    environment:
+      - POSTGRES_HOST=judge0-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0_dev
+      - POSTGRES_DB=judge0
+      - REDIS_HOST=judge0-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=judge0_dev
+      - RAILS_MAX_THREADS=4
+      - RAILS_ENV=production
+    depends_on:
+      judge0-postgres:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
+    privileged: true
+
+  judge0-postgres:
+    image: postgres:16-alpine
+    container_name: verihire-judge0-postgres
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0_dev
+      POSTGRES_DB: judge0
+    volumes:
+      - judge0_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD', 'python', '-c', "import httpx; httpx.get('http://localhost:4200/health')"]
-      interval: 30s
-      timeout: 10s
-      start_period: 120s # Models take time to load
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 4G # ML models need memory
-        reservations:
-          memory: 2G
+      test: ['CMD-SHELL', 'pg_isready -U judge0']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  judge0-redis:
+    image: redis:7-alpine
+    container_name: verihire-judge0-redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    command: redis-server --appendonly yes --requirepass judge0_dev
+    volumes:
+      - judge0_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--pass', 'judge0_dev', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
   redis_data:
-  elasticsearch_data:
   minio_data:
-  ml_model_cache:
+  judge0_postgres_data:
+  judge0_redis_data:
 
 networks:
   default:

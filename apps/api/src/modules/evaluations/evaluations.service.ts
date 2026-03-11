@@ -1,7 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { prisma, Prisma } from '@verihire/database';
-import { AiEvaluationService, EvaluationResult } from './ai-evaluation.service';
+import { prisma } from '@verihire/database';
 import { CertificateService, GeneratedCertificate } from './certificate.service';
+import { TestCaseGeneratorService, GeneratedTestCase } from './test-case-generator.service';
+import { CodeExecutionService, TestCaseResults } from '../code-execution/code-execution.service';
 
 export interface EvaluationWithCertificate {
   evaluation: {
@@ -22,17 +23,19 @@ export class EvaluationsService {
   private readonly logger = new Logger(EvaluationsService.name);
 
   constructor(
-    private aiEvaluationService: AiEvaluationService,
-    private certificateService: CertificateService
+    private certificateService: CertificateService,
+    private testCaseGenerator: TestCaseGeneratorService,
+    private codeExecutionService: CodeExecutionService
   ) {}
 
   /**
-   * Evaluate a submission - main entry point
+   * Evaluate a submission — main entry point
+   * Flow: generate test cases → execute code → score → LLM feedback → save
    */
   async evaluateSubmission(submissionId: string): Promise<EvaluationWithCertificate> {
     const startTime = Date.now();
 
-    // Get submission with challenge details
+    // 1. Fetch submission with challenge details
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
@@ -53,104 +56,221 @@ export class EvaluationsService {
       throw new BadRequestException(`Cannot evaluate submission with status: ${submission.status}`);
     }
 
-    // Mark as evaluating
+    // 2. Mark as evaluating
     await prisma.submission.update({
       where: { id: submissionId },
       data: { status: 'EVALUATING' },
     });
 
     try {
-      // Get evaluation criteria
-      const criteria = submission.challenge.evaluationCriteria
-        ? (submission.challenge.evaluationCriteria as any[]).map((c: any) => ({
-            name: c.name,
-            weight: c.weight,
-            description: c.description,
-            maxScore: c.maxScore || 100,
-          }))
-        : this.aiEvaluationService.getDefaultCriteria(
-            (submission.challenge.type as
-              | 'CODING'
-              | 'WRITTEN'
-              | 'MULTIPLE_CHOICE'
-              | 'SYSTEM_DESIGN') || 'CODING'
-          );
+      const code = submission.content || '';
+      const language = submission.language || 'javascript';
 
-      // Parse requirements
-      const requirements = Array.isArray(submission.challenge.requirements)
-        ? submission.challenge.requirements
-        : typeof submission.challenge.requirements === 'object'
-          ? Object.values(submission.challenge.requirements as Record<string, string>)
-          : [];
+      // 3. Gather manual test cases from the challenge
+      const manualTestCases = this.parseManualTestCases(submission.challenge.testCases);
 
-      // Parse test cases
-      const testCases = submission.challenge.testCases as
-        | Array<{ input: string; expectedOutput: string }>
-        | undefined;
+      // 4. Parse requirements
+      const requirements = this.parseRequirements(submission.challenge.requirements);
 
-      // Perform AI evaluation
-      let evaluationResult: EvaluationResult;
-
-      // DESIGN type is treated like written/system design, CODING and MIXED like coding
-      if (submission.challenge.type === 'WRITTEN' || submission.challenge.type === 'DESIGN') {
-        evaluationResult = await this.aiEvaluationService.evaluateWrittenResponse({
-          response: submission.content || '',
+      // 5. Generate additional test cases via LLM
+      //    LLM generates inputs + expected outputs, but expected outputs may be wrong.
+      //    If a reference solution exists, we validate by running it through Judge0.
+      let generatedTestCases: GeneratedTestCase[] = [];
+      try {
+        generatedTestCases = await this.testCaseGenerator.generateTestCases({
           challengeTitle: submission.challenge.title,
           challengeDescription: submission.challenge.description,
-          requirements: requirements as string[],
-          evaluationCriteria: criteria,
+          requirements,
+          language,
+          numTestCases: 10,
         });
-      } else {
-        evaluationResult = await this.aiEvaluationService.evaluateCode({
-          code: submission.content || '',
-          language: submission.language || 'javascript',
-          challengeTitle: submission.challenge.title,
-          challengeDescription: submission.challenge.description,
-          requirements: requirements as string[],
-          evaluationCriteria: criteria,
-          testCases,
-        });
+        this.logger.log(`Generated ${generatedTestCases.length} test cases via LLM`);
+      } catch (error) {
+        this.logger.warn(`LLM test case generation failed: ${error}, using manual test cases only`);
       }
 
-      const processingTimeMs = Date.now() - startTime;
+      // 6. Validate LLM-generated test cases using reference solution
+      //    Run the reference solution against LLM-generated inputs → use its output
+      //    as the ground-truth expected output (replaces potentially hallucinated outputs)
+      const referenceSolution = (submission.challenge as any).referenceSolution as string | null;
+      const solutionLanguage = (submission.challenge as any).solutionLanguage as string | null;
 
-      // Save evaluation to database
+      if (referenceSolution && generatedTestCases.length > 0) {
+        this.logger.log('Validating LLM test cases against reference solution...');
+        const refLang = solutionLanguage || language;
+
+        const refResults = await this.codeExecutionService.runTestCases({
+          code: referenceSolution,
+          language: refLang,
+          testCases: generatedTestCases.map(tc => ({
+            input: tc.input,
+            expectedOutput: tc.expectedOutput,
+            name: tc.description,
+          })),
+        });
+
+        // Replace LLM expected outputs with reference solution's actual outputs
+        // Only keep test cases where the reference solution produced output
+        const validatedTestCases: GeneratedTestCase[] = [];
+        for (let i = 0; i < generatedTestCases.length; i++) {
+          const refResult = refResults.results[i];
+          if (refResult && refResult.actualOutput != null && !refResult.error) {
+            validatedTestCases.push({
+              ...generatedTestCases[i],
+              expectedOutput: refResult.actualOutput, // ground-truth from reference
+            });
+          } else {
+            this.logger.warn(
+              `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
+            );
+          }
+        }
+
+        this.logger.log(
+          `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
+        );
+        generatedTestCases = validatedTestCases;
+      } else if (!referenceSolution && generatedTestCases.length > 0) {
+        this.logger.warn(
+          'No reference solution available — using LLM-generated expected outputs (may contain errors)'
+        );
+      }
+
+      // 7. Combine manual + validated generated test cases
+      const allTestCases = [
+        ...manualTestCases.map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          name: `Manual: ${tc.name || 'test'}`,
+        })),
+        ...generatedTestCases.map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          name: `AI-${tc.category}: ${tc.description}`,
+        })),
+      ];
+
+      // 8. Execute candidate's code against all test cases via Judge0
+      let executionResults: TestCaseResults;
+      if (allTestCases.length > 0) {
+        executionResults = await this.codeExecutionService.runTestCases({
+          code,
+          language,
+          testCases: allTestCases,
+        });
+        this.logger.log(
+          `Execution complete: ${executionResults.passed}/${executionResults.totalTests} passed (${executionResults.accuracy}%)`
+        );
+      } else {
+        executionResults = {
+          totalTests: 0,
+          passed: 0,
+          failed: 0,
+          accuracy: 0,
+          results: [],
+          totalExecutionTimeMs: 0,
+        };
+        this.logger.warn('No test cases available, scoring on code quality only');
+      }
+
+      // 8. Generate feedback via LLM
+      let feedback = 'Evaluation complete.';
+      let suggestions: string[] = [];
+      let codeQualityNotes = '';
+
+      try {
+        const feedbackResult = await this.testCaseGenerator.generateFeedback({
+          challengeTitle: submission.challenge.title,
+          challengeDescription: submission.challenge.description,
+          code,
+          language,
+          testResults: executionResults.results.map(r => ({
+            name: r.name,
+            passed: r.passed,
+            input: r.input,
+            expectedOutput: r.expectedOutput,
+            actualOutput: r.actualOutput,
+            error: r.error,
+          })),
+          accuracy: executionResults.accuracy,
+        });
+        feedback = feedbackResult.feedback;
+        suggestions = feedbackResult.suggestions;
+        codeQualityNotes = feedbackResult.codeQualityNotes;
+      } catch (error) {
+        this.logger.warn(`Feedback generation failed: ${error}`);
+      }
+
+      // 9. Calculate final score
+      // 60% accuracy (test cases) + 40% code quality (LLM estimate)
+      const accuracyScore = executionResults.accuracy; // 0-100
+      const codeQualityScore = this.estimateCodeQualityScore(code, language, executionResults);
+
+      let overallScore: number;
+      if (allTestCases.length > 0) {
+        overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
+      } else {
+        // No test cases — 100% code quality
+        overallScore = codeQualityScore;
+      }
+
+      // Build criteria scores
+      const criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }> =
+        {
+          correctness: {
+            score: Math.round(accuracyScore),
+            maxScore: 100,
+            feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
+          },
+          code_quality: {
+            score: codeQualityScore,
+            maxScore: 100,
+            feedback: codeQualityNotes || 'Code quality analysis based on structure and patterns.',
+          },
+        };
+
+      const processingTimeMs = Date.now() - startTime;
+      const confidence = allTestCases.length > 0 ? 0.85 : 0.5;
+
+      // 10. Save evaluation to DB
       const evaluation = await prisma.evaluation.create({
         data: {
           submissionId,
-          overallScore: evaluationResult.overallScore,
-          criteriaScores: evaluationResult.criteriaScores as any,
-          staticAnalysis: evaluationResult.staticAnalysis
-            ? (evaluationResult.staticAnalysis as any)
-            : Prisma.JsonNull,
-          testResults: evaluationResult.testResults
-            ? (evaluationResult.testResults as any)
-            : Prisma.JsonNull,
-          feedback: evaluationResult.feedback,
-          suggestions: evaluationResult.suggestions,
-          confidence: evaluationResult.confidence,
+          overallScore,
+          criteriaScores: criteriaScores as any,
+          testResults: {
+            totalTests: executionResults.totalTests,
+            passed: executionResults.passed,
+            failed: executionResults.failed,
+            accuracy: executionResults.accuracy,
+            results: executionResults.results,
+          } as any,
+          feedback,
+          suggestions,
+          confidence,
           processingTimeMs,
           modelVersions: {
-            aiModel: 'gpt-4o',
-            evaluationVersion: '1.0.0',
+            llmModel: 'llama-3.3-70b-versatile',
+            executionEngine: 'judge0-ce',
+            evaluationVersion: '2.0.0',
           },
         },
       });
 
-      // Update submission status and score
+      // 11. Update submission status and score
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
           status: 'EVALUATED',
-          aiScore: evaluationResult.overallScore,
+          aiScore: overallScore,
         },
       });
 
-      // Update challenge stats
-      await this.updateChallengeStats(submission.challengeId, evaluationResult.overallScore);
+      // 12. Update challenge stats
+      await this.updateChallengeStats(submission.challengeId, overallScore);
 
-      // Generate certificate if passing
-      const passed = this.certificateService.isPassing(evaluationResult.overallScore);
+      // 13. Generate certificate if passing
+      const passed = this.certificateService.isPassing(overallScore);
       let certificate: GeneratedCertificate | null = null;
 
       if (passed && submission.challenge.skillId) {
@@ -159,25 +279,25 @@ export class EvaluationsService {
           skillId: submission.challenge.skillId,
           challengeId: submission.challengeId,
           submissionId: submission.id,
-          finalScore: evaluationResult.overallScore,
-          aiScore: evaluationResult.overallScore,
-          criteriaScores: evaluationResult.criteriaScores,
-          confidence: evaluationResult.confidence,
+          finalScore: overallScore,
+          aiScore: overallScore,
+          criteriaScores,
+          confidence,
         });
       }
 
       this.logger.log(
-        `Evaluation complete for submission ${submissionId}: score=${evaluationResult.overallScore}, passed=${passed}`
+        `Evaluation complete for ${submissionId}: score=${overallScore}, accuracy=${executionResults.accuracy}%, passed=${passed}`
       );
 
       return {
         evaluation: {
           id: evaluation.id,
-          overallScore: evaluationResult.overallScore,
-          criteriaScores: evaluationResult.criteriaScores,
-          feedback: evaluationResult.feedback,
-          suggestions: evaluationResult.suggestions,
-          confidence: evaluationResult.confidence,
+          overallScore,
+          criteriaScores,
+          feedback,
+          suggestions,
+          confidence,
           processingTimeMs,
         },
         certificate,
@@ -185,6 +305,7 @@ export class EvaluationsService {
       };
     } catch (error) {
       // Revert status on failure
+      this.logger.error(`Evaluation failed for ${submissionId}: ${error}`);
       await prisma.submission.update({
         where: { id: submissionId },
         data: { status: 'SUBMITTED' },
@@ -247,21 +368,13 @@ export class EvaluationsService {
           submission: {
             include: {
               challenge: {
-                select: {
-                  id: true,
-                  title: true,
-                  difficulty: true,
-                },
+                select: { id: true, title: true, difficulty: true },
               },
               candidate: {
                 select: {
                   id: true,
                   user: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                      email: true,
-                    },
+                    select: { firstName: true, lastName: true, email: true },
                   },
                 },
               },
@@ -291,12 +404,7 @@ export class EvaluationsService {
           },
         },
       })),
-      meta: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + evaluations.length < total,
-      },
+      meta: { total, limit, offset, hasMore: offset + evaluations.length < total },
     };
   }
 
@@ -306,20 +414,12 @@ export class EvaluationsService {
   async getEvaluationStats() {
     const [totalEvaluations, passedEvaluations, avgScore, avgProcessingTime] = await Promise.all([
       prisma.evaluation.count(),
-      prisma.evaluation.count({
-        where: { overallScore: { gte: 70 } },
-      }),
-      prisma.evaluation.aggregate({
-        _avg: { overallScore: true },
-      }),
-      prisma.evaluation.aggregate({
-        _avg: { processingTimeMs: true },
-      }),
+      prisma.evaluation.count({ where: { overallScore: { gte: 70 } } }),
+      prisma.evaluation.aggregate({ _avg: { overallScore: true } }),
+      prisma.evaluation.aggregate({ _avg: { processingTimeMs: true } }),
     ]);
 
     const passRate = totalEvaluations > 0 ? (passedEvaluations / totalEvaluations) * 100 : 0;
-
-    // Get score distribution
     const scoreDistribution = await this.getScoreDistribution();
 
     return {
@@ -349,7 +449,6 @@ export class EvaluationsService {
       throw new NotFoundException('Submission not found');
     }
 
-    // Reset status to allow re-evaluation
     await prisma.submission.update({
       where: { id: submissionId },
       data: { status: 'SUBMITTED' },
@@ -383,19 +482,86 @@ export class EvaluationsService {
     return processed;
   }
 
+  // --- Private helpers ---
+
+  private parseManualTestCases(
+    testCases: any
+  ): Array<{ input: string; expectedOutput: string; name?: string }> {
+    if (!testCases) return [];
+
+    try {
+      const parsed = typeof testCases === 'string' ? JSON.parse(testCases) : testCases;
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed
+        .filter((tc: any) => tc.input !== undefined && (tc.expectedOutput || tc.expected_output))
+        .map((tc: any) => ({
+          input: String(tc.input),
+          expectedOutput: String(tc.expectedOutput || tc.expected_output),
+          name: tc.name || tc.description,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  private parseRequirements(requirements: any): string[] {
+    if (!requirements) return [];
+    if (Array.isArray(requirements)) return requirements.map(String);
+    if (typeof requirements === 'string') {
+      try {
+        const parsed = JSON.parse(requirements);
+        return Array.isArray(parsed) ? parsed.map(String) : [];
+      } catch {
+        return [requirements];
+      }
+    }
+    if (typeof requirements === 'object') return Object.values(requirements).map(String);
+    return [];
+  }
+
+  private estimateCodeQualityScore(
+    code: string,
+    language: string,
+    executionResults: TestCaseResults
+  ): number {
+    let score = 70; // Base score
+
+    const lines = code.split('\n');
+    const nonEmptyLines = lines.filter(l => l.trim().length > 0);
+
+    // Penalize very short solutions (likely incomplete)
+    if (nonEmptyLines.length < 3) score -= 20;
+
+    // Bonus for reasonable length
+    if (nonEmptyLines.length >= 5 && nonEmptyLines.length <= 100) score += 5;
+
+    // Penalize very long lines
+    const longLines = lines.filter(l => l.length > 120);
+    if (longLines.length > 3) score -= 5;
+
+    // Check for basic code quality indicators
+    if (code.includes('console.log') && language !== 'javascript') score -= 3;
+    if (code.includes('TODO') || code.includes('FIXME')) score -= 5;
+    if (code.includes('try') || code.includes('catch') || code.includes('except')) score += 5;
+
+    // Bonus if all tests pass
+    if (executionResults.totalTests > 0 && executionResults.accuracy === 100) score += 10;
+
+    // Bonus for handling edge cases (if many tests pass)
+    if (executionResults.accuracy >= 80) score += 5;
+
+    return Math.max(0, Math.min(100, score));
+  }
+
   private async updateChallengeStats(challengeId: string, score: number) {
-    // Get current stats
     const challenge = await prisma.challenge.findUnique({
       where: { id: challengeId },
-      select: {
-        averageScore: true,
-        timesAttempted: true,
-      },
+      select: { averageScore: true, timesAttempted: true },
     });
 
     if (!challenge) return;
 
-    // Calculate new average
     const currentAvg = challenge.averageScore ? Number(challenge.averageScore) : 0;
     const attempts = challenge.timesAttempted || 1;
     const newAvg = (currentAvg * (attempts - 1) + score) / attempts;
@@ -407,7 +573,6 @@ export class EvaluationsService {
   }
 
   private async getScoreDistribution() {
-    // Get counts for score ranges
     const ranges = [
       { label: '90-100', min: 90, max: 100 },
       { label: '80-89', min: 80, max: 89 },
@@ -417,20 +582,13 @@ export class EvaluationsService {
       { label: '0-49', min: 0, max: 49 },
     ];
 
-    const distribution = await Promise.all(
+    return Promise.all(
       ranges.map(async range => {
         const count = await prisma.evaluation.count({
-          where: {
-            overallScore: {
-              gte: range.min,
-              lte: range.max,
-            },
-          },
+          where: { overallScore: { gte: range.min, lte: range.max } },
         });
         return { range: range.label, count };
       })
     );
-
-    return distribution;
   }
 }

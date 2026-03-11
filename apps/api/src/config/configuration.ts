@@ -68,6 +68,10 @@ export default () => ({
     cacheUseRedis: process.env.ML_SERVICE_CACHE_USE_REDIS === 'true',
   },
 
+  judge0: {
+    url: process.env.JUDGE0_URL || 'http://localhost:2358',
+  },
+
   cors: {
     origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
   },
