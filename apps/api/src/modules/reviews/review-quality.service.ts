@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { BiasType, ReviewQualityMetricsDto, BiasAnalysisDto, CriterionScoreDto } from './dto';
 
 interface ReviewQualityInput {
@@ -59,99 +58,10 @@ export class ReviewQualityService {
     'keep it up',
   ];
 
-  private readonly mlServiceUrl: string;
-  private readonly mlServiceEnabled: boolean;
-
-  constructor(private configService: ConfigService) {
-    this.mlServiceUrl =
-      this.configService.get<string>('mlService.baseUrl') || 'http://localhost:4200';
-    this.mlServiceEnabled = this.configService.get<boolean>('mlService.enabled') ?? true;
-  }
-
   /**
    * Analyze the quality of a review
    */
   async analyzeQuality(input: ReviewQualityInput): Promise<ReviewQualityResult> {
-    // Try ML service first if available
-    if (this.mlServiceEnabled) {
-      try {
-        const mlResult = await this.analyzeWithMlService(input);
-        if (mlResult) return mlResult;
-      } catch (error) {
-        this.logger.warn(`ML service unavailable, using local analysis: ${error}`);
-      }
-    }
-
-    // Fall back to local analysis
-    return this.analyzeLocally(input);
-  }
-
-  /**
-   * Analyze using ML service
-   */
-  private async analyzeWithMlService(
-    input: ReviewQualityInput
-  ): Promise<ReviewQualityResult | null> {
-    try {
-      const response = await fetch(`${this.mlServiceUrl}/api/v1/review/quality`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          review_id: input.reviewId,
-          reviewer_id: input.reviewerId,
-          criteria_scores: input.criteriaScores.map(cs => ({
-            criterion_id: cs.criterionId,
-            criterion_name: cs.criterionName,
-            score: cs.score,
-            weight: cs.weight,
-            justification: cs.justification,
-          })),
-          overall_score: input.overallScore,
-          strengths: input.strengths,
-          areas_for_improvement: input.areasForImprovement,
-          suggestions: input.suggestions || '',
-          submission_content: input.submissionContent,
-          submission_type: input.submissionType,
-          time_spent_seconds: input.timeSpentSeconds,
-          expected_time_seconds: input.expectedTimeSeconds,
-          reviewer_average_score: input.reviewerAverageScore,
-          reviewer_score_stddev: input.reviewerScoreStddev,
-        }),
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json();
-
-      return {
-        overallQuality: data.overall_quality,
-        metrics: {
-          effortScore: data.metrics.effort_score,
-          specificityScore: data.metrics.specificity_score,
-          consistencyScore: data.metrics.consistency_score,
-          rubricAlignmentScore: data.metrics.rubric_alignment_score,
-          feedbackQualityScore: data.metrics.feedback_quality_score,
-        },
-        biasAnalysis: {
-          biasDetected: data.bias_analysis.bias_detected,
-          biasType: data.bias_analysis.bias_type as BiasType,
-          biasProbability: data.bias_analysis.bias_probability,
-          details: data.bias_analysis.details,
-        },
-        isValid: data.is_valid,
-        feedbackForReviewer: data.feedback_for_reviewer,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Analyze quality locally without ML service
-   */
-  private analyzeLocally(input: ReviewQualityInput): ReviewQualityResult {
     // Calculate all metrics
     const effortScore = this.calculateEffortScore(input);
     const specificityScore = this.calculateSpecificityScore(input);
