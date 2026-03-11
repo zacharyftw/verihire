@@ -57,17 +57,6 @@ export default () => ({
     baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   },
 
-  mlService: {
-    baseUrl: process.env.ML_SERVICE_URL || 'http://localhost:4200',
-    timeout: parseInt(process.env.ML_SERVICE_TIMEOUT || '30000', 10),
-    enabled: process.env.ML_SERVICE_ENABLED !== 'false',
-    maxRetries: parseInt(process.env.ML_SERVICE_MAX_RETRIES || '3', 10),
-    retryDelayMs: parseInt(process.env.ML_SERVICE_RETRY_DELAY_MS || '1000', 10),
-    cacheEnabled: process.env.ML_SERVICE_CACHE_ENABLED !== 'false',
-    cacheTtlMs: parseInt(process.env.ML_SERVICE_CACHE_TTL_MS || '3600000', 10), // 1 hour default
-    cacheUseRedis: process.env.ML_SERVICE_CACHE_USE_REDIS === 'true',
-  },
-
   judge0: {
     url: process.env.JUDGE0_URL || 'http://localhost:2358',
   },

@@ -46,7 +46,6 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     BullModule.registerQueue(
       { name: QUEUE_NAMES.EMAIL },
       { name: QUEUE_NAMES.CERTIFICATE },
-      { name: QUEUE_NAMES.EVALUATION },
       { name: QUEUE_NAMES.BLOCKCHAIN }
     ),
   ],
