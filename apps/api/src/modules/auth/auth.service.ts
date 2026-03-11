@@ -14,6 +14,7 @@ import { createHash, randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { QueueService } from '../queue';
 import { RegisterDto } from './dto/register.dto';
+import { OAuthProfile } from './strategies/google.strategy';
 
 @Injectable()
 export class AuthService {
@@ -69,6 +70,70 @@ export class AuthService {
 
   async login(user: User) {
     await this.usersService.updateLastLogin(user.id);
+    return this.generateAuthResponse(user);
+  }
+
+  async validateOrCreateOAuthUser(profile: OAuthProfile) {
+    // Check if user already exists with this OAuth provider
+    let user = await prisma.user.findFirst({
+      where: {
+        oauthProvider: profile.provider,
+        oauthProviderId: profile.providerId,
+      },
+    });
+
+    if (user) {
+      await this.usersService.updateLastLogin(user.id);
+      return this.generateAuthResponse(user);
+    }
+
+    // Check if email is already registered (link accounts)
+    if (profile.email) {
+      user = await this.usersService.findByEmail(profile.email);
+      if (user) {
+        // Link OAuth to existing account
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            oauthProvider: profile.provider,
+            oauthProviderId: profile.providerId,
+            avatarUrl: user.avatarUrl || profile.avatarUrl,
+            emailVerified: true,
+          },
+        });
+        await this.usersService.updateLastLogin(user.id);
+        return this.generateAuthResponse(user);
+      }
+    }
+
+    // Create new user — default to CANDIDATE
+    user = await this.usersService.create({
+      email: profile.email,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      userType: 'CANDIDATE',
+      oauthProvider: profile.provider,
+      oauthProviderId: profile.providerId,
+      emailVerified: true,
+    });
+
+    // Create candidate profile
+    await prisma.candidateProfile.create({
+      data: { userId: user.id },
+    });
+
+    if (profile.avatarUrl) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl: profile.avatarUrl },
+      });
+    }
+
+    // Send welcome email
+    this.queueService
+      .sendWelcomeEmail(user.email, user.firstName ?? 'there')
+      .catch(err => this.logger.error(`Failed to queue welcome email: ${err.message}`));
+
     return this.generateAuthResponse(user);
   }
 

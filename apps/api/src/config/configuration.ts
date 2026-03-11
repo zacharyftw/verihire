@@ -18,6 +18,8 @@ export default () => ({
   },
 
   oauth: {
+    callbackBaseUrl: process.env.API_URL || 'http://localhost:4100',
+    frontendUrl: process.env.APP_URL || 'http://localhost:3100',
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -25,10 +27,6 @@ export default () => ({
     github: {
       clientId: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    },
-    linkedin: {
-      clientId: process.env.LINKEDIN_CLIENT_ID,
-      clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
     },
   },
 

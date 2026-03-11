@@ -7,11 +7,16 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { GitHubAuthGuard } from './guards/github-auth.guard';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -23,7 +28,15 @@ import { ResendVerificationDto } from './dto/resend-verification.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly frontendUrl: string;
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService
+  ) {
+    this.frontendUrl =
+      this.configService.get<string>('oauth.frontendUrl') || 'http://localhost:3100';
+  }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
@@ -120,5 +133,59 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Email already verified' })
   async sendVerification(@Request() req: any) {
     return this.authService.sendVerificationEmail(req.user.sub);
+  }
+
+  // =========================================================================
+  // OAuth — Google
+  // =========================================================================
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  async googleAuth() {
+    // Guard redirects to Google
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback' })
+  async googleCallback(@Request() req: any, @Res() res: Response) {
+    return this.handleOAuthCallback(req, res);
+  }
+
+  // =========================================================================
+  // OAuth — GitHub
+  // =========================================================================
+
+  @Get('github')
+  @UseGuards(GitHubAuthGuard)
+  @ApiOperation({ summary: 'Initiate GitHub OAuth login' })
+  async githubAuth() {
+    // Guard redirects to GitHub
+  }
+
+  @Get('github/callback')
+  @UseGuards(GitHubAuthGuard)
+  @ApiOperation({ summary: 'GitHub OAuth callback' })
+  async githubCallback(@Request() req: any, @Res() res: Response) {
+    return this.handleOAuthCallback(req, res);
+  }
+
+  // =========================================================================
+  // Shared OAuth callback handler
+  // =========================================================================
+
+  private async handleOAuthCallback(req: any, res: Response) {
+    try {
+      const result = await this.authService.validateOrCreateOAuthUser(req.user);
+      // Redirect to frontend with tokens as query params
+      const params = new URLSearchParams({
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+      });
+      return res.redirect(`${this.frontendUrl}/auth/callback?${params.toString()}`);
+    } catch {
+      return res.redirect(`${this.frontendUrl}/login?error=oauth_failed`);
+    }
   }
 }
