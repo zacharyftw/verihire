@@ -21,17 +21,9 @@ import {
   ShortlistCandidateDto,
   UpdateShortlistDto,
 } from './dto/job.dto';
-import {
-  MlServiceClient,
-  MLCandidateProfile,
-  MLJobProfile,
-} from '../evaluations/ml-service.client';
-
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
-
-  constructor(private mlServiceClient: MlServiceClient) {}
   // ===== Job CRUD =====
 
   async createJob(recruiterId: string, data: CreateJobDto) {
@@ -606,14 +598,12 @@ export class JobsService {
   async findMatchingCandidates(
     jobId: string,
     recruiterId: string,
-    options?: { limit?: number; offset?: number; useML?: boolean }
+    options?: { limit?: number; offset?: number }
   ) {
     await this.getJobForRecruiter(jobId, recruiterId);
 
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    const useML = options?.useML ?? true;
-
     // Get job's required skills
     const jobSkills = await prisma.jobSkill.findMany({
       where: { jobId },
@@ -629,12 +619,6 @@ export class JobsService {
         message: 'Add skills to the job to find matching candidates',
       };
     }
-
-    // Get job details for experience requirements
-    const job = await prisma.job.findUnique({
-      where: { id: jobId },
-      select: { experienceYearsMin: true, experienceYearsMax: true },
-    });
 
     const requiredSkillIds = jobSkills.filter(js => js.required).map(js => js.skillId);
 
@@ -673,126 +657,11 @@ export class JobsService {
       skip: offset,
     });
 
-    // Try ML-based matching first
-    if (useML && candidates.length > 0) {
-      const mlResult = await this.matchCandidatesWithNCF(jobId, job, jobSkills, candidates, limit);
-      if (mlResult) {
-        return mlResult;
-      }
-    }
-
-    // Fallback to rule-based matching
     return this.matchCandidatesRuleBased(jobSkills, candidates, requiredSkillIds, limit, offset);
   }
 
   /**
-   * Use NCF model for candidate matching
-   */
-  private async matchCandidatesWithNCF(
-    jobId: string,
-    job: { experienceYearsMin: number | null; experienceYearsMax: number | null } | null,
-    jobSkills: Array<{
-      skillId: string;
-      minScore: number | null;
-      minLevel: string | null;
-      required: boolean;
-      skill: { id: string; name: string };
-    }>,
-    candidates: Array<{
-      id: string;
-      yearsExperience: number;
-      user: { firstName: string | null; lastName: string | null; avatarUrl: string | null };
-      candidateSkills: Array<{
-        skillId: string;
-        level: string | null;
-        score: unknown;
-        verified: boolean;
-        skill: { id: string; name: string; slug: string };
-      }>;
-    }>,
-    limit: number
-  ) {
-    try {
-      // Convert to ML service format
-      const mlJobProfile: MLJobProfile = {
-        job_id: jobId,
-        required_skills: jobSkills.map(js => ({
-          skill_id: js.skillId,
-          skill_name: js.skill.name,
-          required_level: this.skillLevelToNumber(js.minLevel),
-          weight: js.required ? 1.0 : 0.5,
-          is_required: js.required,
-        })),
-        experience_min: job?.experienceYearsMin ?? undefined,
-        experience_max: job?.experienceYearsMax ?? undefined,
-      };
-
-      const mlCandidates: MLCandidateProfile[] = candidates.map(c => ({
-        candidate_id: c.id,
-        skills: c.candidateSkills.map(cs => ({
-          skill_id: cs.skillId,
-          skill_name: cs.skill.name,
-          proficiency_level: this.skillLevelToNumber(cs.level),
-          verified: cs.verified,
-          certification_score: cs.score ? Number(cs.score) : undefined,
-        })),
-        experience_years: c.yearsExperience ?? undefined,
-      }));
-
-      const mlResult = await this.mlServiceClient.matchCandidates({
-        job: mlJobProfile,
-        candidates: mlCandidates,
-        top_k: limit,
-        min_score: 0.1,
-      });
-
-      if (!mlResult) {
-        this.logger.debug('ML service returned no results, falling back to rule-based');
-        return null;
-      }
-
-      this.logger.log(
-        `NCF matching found ${mlResult.matches.length} candidates in ${mlResult.processing_time_ms}ms`
-      );
-
-      // Map ML results back to candidate data
-      const candidateMap = new Map(candidates.map(c => [c.id, c]));
-
-      const enrichedMatches = mlResult.matches.map(match => {
-        const candidate = candidateMap.get(match.candidate_id);
-        return {
-          ...candidate,
-          matchScore: Math.round(match.overall_score * 100) / 10, // Convert 0-1 to 0-10 scale
-          skillMatchScore: Math.round(match.skill_match_score * 100) / 100,
-          experienceMatchScore: Math.round(match.experience_match_score * 100) / 100,
-          ncfScore: Math.round(match.ncf_score * 100) / 100,
-          skillGaps: match.skill_gaps,
-          skillStrengths: match.skill_strengths,
-          matchedSkillsCount: candidate?.candidateSkills.length ?? 0,
-          totalRequiredSkills: jobSkills.filter(js => js.required).length,
-          hasAllRequired: match.skill_gaps.filter(g => !g.includes('levels')).length === 0,
-          mlPowered: true,
-        };
-      });
-
-      return {
-        data: enrichedMatches,
-        meta: {
-          total: mlResult.total_candidates,
-          limit,
-          offset: 0,
-          hasMore: mlResult.matches.length < mlResult.total_candidates,
-          mlProcessingTimeMs: mlResult.processing_time_ms,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`NCF matching failed: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Fallback rule-based candidate matching
+   * Rule-based candidate matching
    */
   private matchCandidatesRuleBased(
     jobSkills: Array<{

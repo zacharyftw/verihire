@@ -721,6 +721,8 @@ async function main() {
         ]),
         difficulty: ChallengeDifficulty.INTERMEDIATE,
         type: ChallengeType.CODING,
+        category: 'GENERAL_SWE' as any,
+        supportedLanguages: ['javascript', 'typescript', 'python', 'java', 'cpp', 'go', 'rust'],
         timeLimitMinutes: 45,
         evaluationCriteria: templates[0].evaluationCriteria,
         starterCode: `// Implement these functions
@@ -771,6 +773,8 @@ function mergeSorted(arr1, arr2) {
         ]),
         difficulty: ChallengeDifficulty.INTERMEDIATE,
         type: ChallengeType.CODING,
+        category: 'DOMAIN_SPECIFIC' as any,
+        supportedLanguages: ['javascript', 'typescript'],
         timeLimitMinutes: 60,
         evaluationCriteria: templates[1].evaluationCriteria,
         starterCode: `import React, { useState } from 'react';

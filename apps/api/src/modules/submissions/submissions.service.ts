@@ -1,13 +1,18 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 import { prisma, SubmissionStatus } from '@verihire/database';
+import { EvaluationsService } from '../evaluations/evaluations.service';
 
 @Injectable()
 export class SubmissionsService {
+  private readonly logger = new Logger(SubmissionsService.name);
+
+  constructor(private readonly evaluationsService: EvaluationsService) {}
   async startSubmission(
     candidateId: string,
     challengeId: string,
@@ -116,6 +121,19 @@ export class SubmissionsService {
       throw new BadRequestException('Submission has already been submitted');
     }
 
+    // Validate language for domain-specific challenges
+    const challenge = submission.challenge as any;
+    if (challenge.category === 'DOMAIN_SPECIFIC' && challenge.supportedLanguages && language) {
+      const allowed: string[] = Array.isArray(challenge.supportedLanguages)
+        ? challenge.supportedLanguages
+        : [];
+      if (allowed.length > 0 && !allowed.includes(language.toLowerCase())) {
+        throw new BadRequestException(
+          `This challenge requires one of: ${allowed.join(', ')}. Got: ${language}`
+        );
+      }
+    }
+
     const now = new Date();
     const timeSpent = submission.startedAt
       ? Math.round((now.getTime() - new Date(submission.startedAt).getTime()) / 1000)
@@ -139,9 +157,10 @@ export class SubmissionsService {
       },
     });
 
-    // In production, this would trigger the AI evaluation pipeline
-    // For now, we'll just mark it as submitted
-    // await this.triggerEvaluation(updated);
+    // Run evaluation asynchronously (fire-and-forget)
+    this.evaluationsService.evaluateSubmission(updated.id).catch(err => {
+      this.logger.error(`Evaluation failed for submission ${updated.id}: ${err.message}`);
+    });
 
     return updated;
   }
