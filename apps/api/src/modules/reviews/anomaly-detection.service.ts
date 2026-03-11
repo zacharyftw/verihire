@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { prisma } from '@verihire/database';
 import { ReviewAnomalyDto, AnomalyDetectionResponseDto } from './dto';
 
@@ -29,9 +28,6 @@ interface CollusionRing {
 export class AnomalyDetectionService {
   private readonly logger = new Logger(AnomalyDetectionService.name);
 
-  private readonly mlServiceUrl: string;
-  private readonly mlServiceEnabled: boolean;
-
   // Detection thresholds
   private readonly rubberStampThreshold = 0.85; // Score similarity
   private readonly minTimeThreshold = 60; // Minimum review time in seconds
@@ -39,12 +35,6 @@ export class AnomalyDetectionService {
   private readonly reciprocalWindowDays = 30;
   private readonly collusionMinParticipants = 3;
   private readonly collusionMinInteractions = 2;
-
-  constructor(private configService: ConfigService) {
-    this.mlServiceUrl =
-      this.configService.get<string>('mlService.baseUrl') || 'http://localhost:4200';
-    this.mlServiceEnabled = this.configService.get<boolean>('mlService.enabled') ?? true;
-  }
 
   /**
    * Run comprehensive anomaly detection on recent reviews
@@ -112,16 +102,6 @@ export class AnomalyDetectionService {
 
     const collusionAnomalies = await this.detectCollusionRings(patterns);
     anomalies.push(...collusionAnomalies);
-
-    // Try ML service for advanced detection
-    if (this.mlServiceEnabled && patterns.length > 0) {
-      try {
-        const mlAnomalies = await this.detectWithMlService(patterns);
-        anomalies.push(...mlAnomalies);
-      } catch (error) {
-        this.logger.warn(`ML anomaly detection unavailable: ${error}`);
-      }
-    }
 
     // Deduplicate and sort by confidence
     const uniqueAnomalies = this.deduplicateAnomalies(anomalies);
@@ -425,46 +405,6 @@ export class AnomalyDetectionService {
     }
 
     return null;
-  }
-
-  /**
-   * Use ML service for advanced anomaly detection
-   */
-  private async detectWithMlService(patterns: ReviewPattern[]): Promise<ReviewAnomalyDto[]> {
-    try {
-      const response = await fetch(`${this.mlServiceUrl}/api/v1/review/anomalies`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reviews: patterns.map(p => ({
-            review_id: p.reviewId,
-            reviewer_id: p.reviewerId,
-            submission_id: p.submissionId,
-            candidate_id: p.candidateId,
-            score: p.score,
-            time_spent_seconds: p.timeSpentSeconds,
-            submitted_at: p.submittedAt?.toISOString(),
-            feedback_length: p.feedbackLength,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        return [];
-      }
-
-      const data = await response.json();
-
-      return data.anomalies.map((a: any) => ({
-        anomalyType: a.anomaly_type,
-        confidence: a.confidence,
-        affectedReviewIds: a.affected_review_ids,
-        affectedUserIds: a.affected_user_ids,
-        details: a.details,
-      }));
-    } catch {
-      return [];
-    }
   }
 
   /**
