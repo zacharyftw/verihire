@@ -1,0 +1,12 @@
+[build]
+builder = "nixpacks"
+buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @verihire/web build"
+
+[deploy]
+startCommand = "cd apps/web && pnpm start"
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+
+[deploy.watchPatterns]
+paths = ["apps/web/**", "packages/**"]
