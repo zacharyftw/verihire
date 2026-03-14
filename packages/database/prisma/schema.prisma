@@ -413,6 +413,9 @@ model Challenge {
   generatedAt     DateTime @default(now()) @map("generated_at") @db.Timestamptz
   generationModel String?  @map("generation_model") @db.VarChar(50)
 
+  // Cached LLM-generated + validated test cases (populated after first evaluation)
+  cachedTestCases Json? @map("cached_test_cases")
+
   // Stats
   timesAttempted Int      @default(0) @map("times_attempted")
   averageScore   Decimal? @map("average_score") @db.Decimal(5, 2)
