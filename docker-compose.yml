@@ -1,25 +1,4 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: verihire-postgres
-    restart: unless-stopped
-    ports:
-      - '5432:5432'
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-verihire}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-verihire_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-verihire}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-verihire}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: verihire-redis
@@ -34,26 +13,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # MinIO for local S3-compatible storage
-  minio:
-    image: minio/minio:latest
-    container_name: verihire-minio
-    restart: unless-stopped
-    ports:
-      - '9000:9000'
-      - '9001:9001'
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-verihire}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-verihire_dev}
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Mailhog for local email testing
   mailhog:
@@ -147,9 +106,7 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
   redis_data:
-  minio_data:
   judge0_postgres_data:
   judge0_redis_data:
 
