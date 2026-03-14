@@ -57,6 +57,8 @@ export default () => ({
 
   judge0: {
     url: process.env.JUDGE0_URL || 'http://localhost:2358',
+    apiKey: process.env.JUDGE0_API_KEY || '',
+    apiHost: process.env.JUDGE0_API_HOST || '',
   },
 
   cors: {

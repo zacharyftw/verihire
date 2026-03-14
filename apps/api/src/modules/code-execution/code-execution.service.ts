@@ -39,9 +39,22 @@ export interface TestCaseResults {
 export class CodeExecutionService {
   private readonly logger = new Logger(CodeExecutionService.name);
   private readonly judge0Url: string;
+  private readonly judge0ApiKey: string;
+  private readonly judge0ApiHost: string;
 
   constructor(private configService: ConfigService) {
     this.judge0Url = this.configService.get<string>('judge0.url') || 'http://localhost:2358';
+    this.judge0ApiKey = this.configService.get<string>('judge0.apiKey') || '';
+    this.judge0ApiHost = this.configService.get<string>('judge0.apiHost') || '';
+  }
+
+  private getHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
+    if (this.judge0ApiKey) {
+      headers['X-RapidAPI-Key'] = this.judge0ApiKey;
+      headers['X-RapidAPI-Host'] = this.judge0ApiHost;
+    }
+    return headers;
   }
 
   getLanguageId(language: string): number {
@@ -78,7 +91,7 @@ export class CodeExecutionService {
     try {
       const response = await fetch(`${this.judge0Url}/submissions?base64_encoded=false&wait=true`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           source_code: params.code,
           language_id: languageId,
@@ -141,7 +154,7 @@ export class CodeExecutionService {
 
       const response = await fetch(`${this.judge0Url}/submissions/batch?base64_encoded=false`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ submissions }),
       });
 
@@ -227,7 +240,8 @@ export class CodeExecutionService {
     while (Date.now() - startTime < maxWaitMs) {
       const tokenQuery = tokens.map(t => `tokens=${t}`).join('&');
       const response = await fetch(
-        `${this.judge0Url}/submissions/batch?${tokenQuery}&base64_encoded=false&fields=stdout,stderr,status,time,memory,compile_output`
+        `${this.judge0Url}/submissions/batch?${tokenQuery}&base64_encoded=false&fields=stdout,stderr,status,time,memory,compile_output`,
+        { headers: this.getHeaders() }
       );
 
       if (!response.ok) {
@@ -255,7 +269,8 @@ export class CodeExecutionService {
     // Return whatever we have
     const tokenQuery = tokens.map(t => `tokens=${t}`).join('&');
     const response = await fetch(
-      `${this.judge0Url}/submissions/batch?${tokenQuery}&base64_encoded=false&fields=stdout,stderr,status,time,memory,compile_output`
+      `${this.judge0Url}/submissions/batch?${tokenQuery}&base64_encoded=false&fields=stdout,stderr,status,time,memory,compile_output`,
+      { headers: this.getHeaders() }
     );
     if (response.ok) {
       const data = await response.json();
