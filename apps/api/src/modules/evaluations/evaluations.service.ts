@@ -52,15 +52,18 @@ export class EvaluationsService {
       throw new NotFoundException('Submission not found');
     }
 
-    if (submission.status !== 'SUBMITTED') {
-      throw new BadRequestException(`Cannot evaluate submission with status: ${submission.status}`);
-    }
-
-    // 2. Mark as evaluating
-    await prisma.submission.update({
-      where: { id: submissionId },
+    // 2. Atomic status claim — prevents two concurrent requests from both evaluating the same submission.
+    //    updateMany with the status condition returns count=0 if another process already claimed it.
+    const claimed = await prisma.submission.updateMany({
+      where: { id: submissionId, status: 'SUBMITTED' },
       data: { status: 'EVALUATING' },
     });
+
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        `Submission is already being evaluated or has already been evaluated (status: ${submission.status})`
+      );
+    }
 
     try {
       const code = submission.content || '';
@@ -72,68 +75,91 @@ export class EvaluationsService {
       // 4. Parse requirements
       const requirements = this.parseRequirements(submission.challenge.requirements);
 
-      // 5. Generate additional test cases via LLM
-      //    LLM generates inputs + expected outputs, but expected outputs may be wrong.
-      //    If a reference solution exists, we validate by running it through Judge0.
+      // 5. Get test cases — use cached ones if available, otherwise generate via LLM
+      //    Caching prevents repeated Groq API calls for the same challenge.
+      const cachedRaw = submission.challenge.cachedTestCases;
+      const cachedTestCases = Array.isArray(cachedRaw)
+        ? (cachedRaw as unknown as GeneratedTestCase[])
+        : null;
       let generatedTestCases: GeneratedTestCase[] = [];
-      try {
-        generatedTestCases = await this.testCaseGenerator.generateTestCases({
-          challengeTitle: submission.challenge.title,
-          challengeDescription: submission.challenge.description,
-          requirements,
-          language,
-          numTestCases: 10,
-        });
-        this.logger.log(`Generated ${generatedTestCases.length} test cases via LLM`);
-      } catch (error) {
-        this.logger.warn(`LLM test case generation failed: ${error}, using manual test cases only`);
-      }
 
-      // 6. Validate LLM-generated test cases using reference solution
-      //    Run the reference solution against LLM-generated inputs → use its output
-      //    as the ground-truth expected output (replaces potentially hallucinated outputs)
-      const referenceSolution = (submission.challenge as any).referenceSolution as string | null;
-      const solutionLanguage = (submission.challenge as any).solutionLanguage as string | null;
-
-      if (referenceSolution && generatedTestCases.length > 0) {
-        this.logger.log('Validating LLM test cases against reference solution...');
-        const refLang = solutionLanguage || language;
-
-        const refResults = await this.codeExecutionService.runTestCases({
-          code: referenceSolution,
-          language: refLang,
-          testCases: generatedTestCases.map(tc => ({
-            input: tc.input,
-            expectedOutput: tc.expectedOutput,
-            name: tc.description,
-          })),
-        });
-
-        // Replace LLM expected outputs with reference solution's actual outputs
-        // Only keep test cases where the reference solution produced output
-        const validatedTestCases: GeneratedTestCase[] = [];
-        for (let i = 0; i < generatedTestCases.length; i++) {
-          const refResult = refResults.results[i];
-          if (refResult && refResult.actualOutput != null && !refResult.error) {
-            validatedTestCases.push({
-              ...generatedTestCases[i],
-              expectedOutput: refResult.actualOutput, // ground-truth from reference
-            });
-          } else {
-            this.logger.warn(
-              `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
-            );
-          }
+      if (cachedTestCases && Array.isArray(cachedTestCases) && cachedTestCases.length > 0) {
+        generatedTestCases = cachedTestCases;
+        this.logger.log(`Using ${generatedTestCases.length} cached test cases for challenge`);
+      } else {
+        // No cache — generate via LLM
+        try {
+          generatedTestCases = await this.testCaseGenerator.generateTestCases({
+            challengeTitle: submission.challenge.title,
+            challengeDescription: submission.challenge.description,
+            requirements,
+            language,
+            numTestCases: 10,
+          });
+          this.logger.log(`Generated ${generatedTestCases.length} test cases via LLM`);
+        } catch (error) {
+          this.logger.warn(
+            `LLM test case generation failed: ${error}, using manual test cases only`
+          );
         }
 
-        this.logger.log(
-          `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
-        );
-        generatedTestCases = validatedTestCases;
-      } else if (!referenceSolution && generatedTestCases.length > 0) {
-        this.logger.warn(
-          'No reference solution available — using LLM-generated expected outputs (may contain errors)'
-        );
+        // 6. Validate LLM-generated test cases using reference solution
+        //    Run the reference solution against LLM-generated inputs → use its output
+        //    as the ground-truth expected output (replaces potentially hallucinated outputs)
+        const referenceSolution = submission.challenge.referenceSolution;
+        const solutionLanguage = submission.challenge.solutionLanguage;
+
+        if (referenceSolution && generatedTestCases.length > 0) {
+          this.logger.log('Validating LLM test cases against reference solution...');
+          const refLang = solutionLanguage || language;
+
+          const refResults = await this.codeExecutionService.runTestCases({
+            code: referenceSolution,
+            language: refLang,
+            testCases: generatedTestCases.map(tc => ({
+              input: tc.input,
+              expectedOutput: tc.expectedOutput,
+              name: tc.description,
+            })),
+          });
+
+          // Replace LLM expected outputs with reference solution's actual outputs
+          // Only keep test cases where the reference solution produced output
+          const validatedTestCases: GeneratedTestCase[] = [];
+          for (let i = 0; i < generatedTestCases.length; i++) {
+            const refResult = refResults.results[i];
+            if (refResult && refResult.actualOutput != null && !refResult.error) {
+              validatedTestCases.push({
+                ...generatedTestCases[i],
+                expectedOutput: refResult.actualOutput, // ground-truth from reference
+              });
+            } else {
+              this.logger.warn(
+                `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
+              );
+            }
+          }
+
+          this.logger.log(
+            `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
+          );
+          generatedTestCases = validatedTestCases;
+        } else if (!referenceSolution && generatedTestCases.length > 0) {
+          this.logger.warn(
+            'No reference solution available — using LLM-generated expected outputs (may contain errors)'
+          );
+        }
+
+        // Cache the test cases on the challenge so future submissions skip this step
+        if (generatedTestCases.length > 0) {
+          await prisma.challenge.update({
+            where: { id: submission.challengeId },
+            data: { cachedTestCases: generatedTestCases as any },
+          });
+          this.logger.log(
+            `Cached ${generatedTestCases.length} test cases for challenge ${submission.challengeId}`
+          );
+        }
       }
 
       // 7. Combine manual + validated generated test cases
@@ -150,32 +176,33 @@ export class EvaluationsService {
         })),
       ];
 
-      // 8. Execute candidate's code against all test cases via Judge0
-      let executionResults: TestCaseResults;
+      // 8. Execute candidate's code + plagiarism check in parallel
+      const [executionResults, plagiarismResult] = await Promise.all([
+        allTestCases.length > 0
+          ? this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
+          : Promise.resolve<TestCaseResults>({
+              totalTests: 0,
+              passed: 0,
+              failed: 0,
+              accuracy: 0,
+              results: [],
+              totalExecutionTimeMs: 0,
+            }),
+        this.checkPlagiarism(submissionId, submission.challengeId, code),
+      ]);
+
       if (allTestCases.length > 0) {
-        executionResults = await this.codeExecutionService.runTestCases({
-          code,
-          language,
-          testCases: allTestCases,
-        });
         this.logger.log(
           `Execution complete: ${executionResults.passed}/${executionResults.totalTests} passed (${executionResults.accuracy}%)`
         );
       } else {
-        executionResults = {
-          totalTests: 0,
-          passed: 0,
-          failed: 0,
-          accuracy: 0,
-          results: [],
-          totalExecutionTimeMs: 0,
-        };
         this.logger.warn('No test cases available, scoring on code quality only');
       }
 
-      // 8. Generate feedback via LLM
+      // 8. Generate feedback + code quality score via LLM
       let feedback = 'Evaluation complete.';
       let suggestions: string[] = [];
+      let codeQualityScore = 70; // fallback if LLM is unavailable
       let codeQualityNotes = '';
 
       try {
@@ -196,15 +223,15 @@ export class EvaluationsService {
         });
         feedback = feedbackResult.feedback;
         suggestions = feedbackResult.suggestions;
+        codeQualityScore = feedbackResult.codeQualityScore;
         codeQualityNotes = feedbackResult.codeQualityNotes;
       } catch (error) {
         this.logger.warn(`Feedback generation failed: ${error}`);
       }
 
       // 9. Calculate final score
-      // 60% accuracy (test cases) + 40% code quality (LLM estimate)
+      // 60% accuracy (test cases) + 40% code quality (LLM-evaluated)
       const accuracyScore = executionResults.accuracy; // 0-100
-      const codeQualityScore = this.estimateCodeQualityScore(code, language, executionResults);
 
       let overallScore: number;
       if (allTestCases.length > 0) {
@@ -238,6 +265,13 @@ export class EvaluationsService {
           submissionId,
           overallScore,
           criteriaScores: criteriaScores as any,
+          staticAnalysis: {
+            plagiarism: {
+              flagged: plagiarismResult.flagged,
+              similarityScore: plagiarismResult.maxSimilarity,
+              mostSimilarSubmissionId: plagiarismResult.similarSubmissionId,
+            },
+          } as any,
           testResults: {
             totalTests: executionResults.totalTests,
             passed: executionResults.passed,
@@ -458,9 +492,9 @@ export class EvaluationsService {
   }
 
   /**
-   * Process pending submissions (batch job)
+   * Process pending submissions in parallel batches
    */
-  async processPendingSubmissions(limit = 10): Promise<number> {
+  async processPendingSubmissions(limit = 10, concurrency = 3): Promise<number> {
     const pending = await prisma.submission.findMany({
       where: { status: 'SUBMITTED' },
       orderBy: { submittedAt: 'asc' },
@@ -469,12 +503,14 @@ export class EvaluationsService {
     });
 
     let processed = 0;
-    for (const submission of pending) {
-      try {
-        await this.evaluateSubmission(submission.id);
-        processed++;
-      } catch (error) {
-        this.logger.error(`Failed to evaluate submission ${submission.id}: ${error}`);
+
+    for (let i = 0; i < pending.length; i += concurrency) {
+      const batch = pending.slice(i, i + concurrency);
+      const results = await Promise.allSettled(batch.map(s => this.evaluateSubmission(s.id)));
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') processed++;
+        else this.logger.error(`Failed to evaluate submission: ${result.reason}`);
       }
     }
 
@@ -520,38 +556,86 @@ export class EvaluationsService {
     return [];
   }
 
-  private estimateCodeQualityScore(
-    code: string,
-    language: string,
-    executionResults: TestCaseResults
-  ): number {
-    let score = 70; // Base score
+  private async checkPlagiarism(
+    submissionId: string,
+    challengeId: string,
+    code: string
+  ): Promise<{ flagged: boolean; maxSimilarity: number; similarSubmissionId: string | null }> {
+    const normalized = this.normalizeCodeForSimilarity(code);
 
-    const lines = code.split('\n');
-    const nonEmptyLines = lines.filter(l => l.trim().length > 0);
+    if (normalized.length < 50) {
+      return { flagged: false, maxSimilarity: 0, similarSubmissionId: null };
+    }
 
-    // Penalize very short solutions (likely incomplete)
-    if (nonEmptyLines.length < 3) score -= 20;
+    const codeNgrams = this.getCharNgrams(normalized);
 
-    // Bonus for reasonable length
-    if (nonEmptyLines.length >= 5 && nonEmptyLines.length <= 100) score += 5;
+    const others = await prisma.submission.findMany({
+      where: {
+        challengeId,
+        id: { not: submissionId },
+        status: 'EVALUATED',
+        content: { not: null },
+      },
+      select: { id: true, content: true },
+      take: 100,
+      orderBy: { submittedAt: 'desc' },
+    });
 
-    // Penalize very long lines
-    const longLines = lines.filter(l => l.length > 120);
-    if (longLines.length > 3) score -= 5;
+    let maxSimilarity = 0;
+    let similarSubmissionId: string | null = null;
 
-    // Check for basic code quality indicators
-    if (code.includes('console.log') && language !== 'javascript') score -= 3;
-    if (code.includes('TODO') || code.includes('FIXME')) score -= 5;
-    if (code.includes('try') || code.includes('catch') || code.includes('except')) score += 5;
+    for (const other of others) {
+      if (!other.content) continue;
+      const otherNgrams = this.getCharNgrams(this.normalizeCodeForSimilarity(other.content));
+      const similarity = this.jaccardSimilarity(codeNgrams, otherNgrams);
+      if (similarity > maxSimilarity) {
+        maxSimilarity = similarity;
+        similarSubmissionId = other.id;
+      }
+    }
 
-    // Bonus if all tests pass
-    if (executionResults.totalTests > 0 && executionResults.accuracy === 100) score += 10;
+    const flagged = maxSimilarity >= 0.85;
+    if (flagged) {
+      this.logger.warn(
+        `Plagiarism flagged for ${submissionId}: ${Math.round(maxSimilarity * 100)}% similar to ${similarSubmissionId}`
+      );
+    }
 
-    // Bonus for handling edge cases (if many tests pass)
-    if (executionResults.accuracy >= 80) score += 5;
+    return {
+      flagged,
+      maxSimilarity: Math.round(maxSimilarity * 10000) / 100,
+      similarSubmissionId,
+    };
+  }
 
-    return Math.max(0, Math.min(100, score));
+  private normalizeCodeForSimilarity(code: string): string {
+    return code
+      .replace(/\/\/[^\n]*/g, '') // single-line comments (JS/TS/Java/Go/Rust)
+      .replace(/#[^\n]*/g, '') // single-line comments (Python/Ruby)
+      .replace(/\/\*[\s\S]*?\*\//g, '') // multi-line comments
+      .replace(/"""[\s\S]*?"""/g, '') // Python docstrings
+      .replace(/'''[\s\S]*?'''/g, '') // Python docstrings
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  private getCharNgrams(text: string, n = 5): Set<string> {
+    const ngrams = new Set<string>();
+    for (let i = 0; i <= text.length - n; i++) {
+      ngrams.add(text.slice(i, i + n));
+    }
+    return ngrams;
+  }
+
+  private jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 && b.size === 0) return 1;
+    if (a.size === 0 || b.size === 0) return 0;
+    let intersection = 0;
+    for (const item of a) {
+      if (b.has(item)) intersection++;
+    }
+    return intersection / (a.size + b.size - intersection);
   }
 
   private async updateChallengeStats(challengeId: string, score: number) {

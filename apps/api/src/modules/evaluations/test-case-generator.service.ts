@@ -11,6 +11,7 @@ export interface GeneratedTestCase {
 export interface GeneratedFeedback {
   feedback: string;
   suggestions: string[];
+  codeQualityScore: number;
   codeQualityNotes: string;
 }
 
@@ -191,8 +192,11 @@ RESPONSE FORMAT (JSON):
 {
   "feedback": "overall assessment paragraph",
   "suggestions": ["specific improvement 1", "specific improvement 2", ...],
+  "codeQualityScore": 75,
   "codeQualityNotes": "notes on code style, readability, efficiency"
 }
+
+codeQualityScore is an integer from 0-100 evaluating: readability, structure, error handling, naming, efficiency, and best practices.
 
 Output ONLY valid JSON, no markdown.`;
 
@@ -216,6 +220,10 @@ Provide feedback on this submission.`;
       return {
         feedback: parsed.feedback || 'Evaluation complete.',
         suggestions: parsed.suggestions || [],
+        codeQualityScore:
+          typeof parsed.codeQualityScore === 'number'
+            ? Math.min(100, Math.max(0, Math.round(parsed.codeQualityScore)))
+            : 70,
         codeQualityNotes: parsed.codeQualityNotes || '',
       };
     } catch (error) {
@@ -227,11 +235,11 @@ Provide feedback on this submission.`;
   private async callLLMForTestCases(
     systemPrompt: string,
     userPrompt: string,
-    numTestCases: number
+    _numTestCases: number
   ): Promise<GeneratedTestCase[]> {
     if (!this.apiKey) {
-      this.logger.warn('No API key configured, returning default test cases');
-      return this.getDefaultTestCases(numTestCases);
+      this.logger.warn('No API key configured, skipping LLM test case generation');
+      return [];
     }
 
     // Try up to 2 times (initial + 1 retry)
@@ -262,13 +270,13 @@ Provide feedback on this submission.`;
       } catch (error) {
         this.logger.warn(`Test case generation attempt ${attempt + 1} failed: ${error}`);
         if (attempt === 1) {
-          this.logger.error('Test case generation failed after retries, using defaults');
-          return this.getDefaultTestCases(numTestCases);
+          this.logger.error('Test case generation failed after retries, returning empty');
+          return [];
         }
       }
     }
 
-    return this.getDefaultTestCases(numTestCases);
+    return [];
   }
 
   private async callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -323,19 +331,6 @@ Provide feedback on this submission.`;
     return hints[problemType] || '- Empty input, single element, typical input, large input';
   }
 
-  private getDefaultTestCases(count: number): GeneratedTestCase[] {
-    const defaults: GeneratedTestCase[] = [];
-    for (let i = 0; i < count; i++) {
-      defaults.push({
-        input: `test_input_${i + 1}`,
-        expectedOutput: `test_output_${i + 1}`,
-        category: i < 4 ? 'normal' : i < 7 ? 'edge' : 'boundary',
-        description: `Default test case ${i + 1}`,
-      });
-    }
-    return defaults;
-  }
-
   private getMockFeedback(accuracy: number): GeneratedFeedback {
     if (accuracy >= 90) {
       return {
@@ -345,6 +340,7 @@ Provide feedback on this submission.`;
           'Consider adding inline comments for complex logic',
           'Minor edge cases could be handled more explicitly',
         ],
+        codeQualityScore: 85,
         codeQualityNotes: 'Clean, readable code with good structure.',
       };
     } else if (accuracy >= 70) {
@@ -356,6 +352,7 @@ Provide feedback on this submission.`;
           'Consider input validation',
           'Test with boundary values',
         ],
+        codeQualityScore: 70,
         codeQualityNotes: 'Decent code quality. Could benefit from better error handling.',
       };
     } else {
@@ -368,6 +365,7 @@ Provide feedback on this submission.`;
           'Add error handling',
           'Test your solution step by step with small inputs',
         ],
+        codeQualityScore: 50,
         codeQualityNotes: 'Focus on getting correctness first, then improve code quality.',
       };
     }
