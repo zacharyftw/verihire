@@ -11,6 +11,8 @@ import { ConfigService } from '@nestjs/config';
 import { prisma, User } from '@verihire/database';
 import { generateUUID } from '@verihire/utils';
 import { createHash, randomBytes } from 'crypto';
+import { authenticator } from 'otplib';
+import * as QRCode from 'qrcode';
 import { UsersService } from '../users/users.service';
 import { QueueService } from '../queue';
 import { RegisterDto } from './dto/register.dto';
@@ -431,6 +433,109 @@ export class AuthService {
     });
 
     return { message: 'Email verified successfully' };
+  }
+
+  // =========================================================================
+  // MFA — TOTP
+  // =========================================================================
+
+  async setupMfa(
+    userId: string
+  ): Promise<{ secret: string; qrCodeUrl: string; otpauthUrl: string }> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.mfaEnabled) throw new BadRequestException('MFA is already enabled');
+
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(user.email, 'VeriHire', secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+
+    // Store secret temporarily (not yet enabled — user must confirm with a token)
+    await prisma.user.update({
+      where: { id: userId },
+      data: { mfaSecretEncrypted: Buffer.from(secret).toString('base64') },
+    });
+
+    return { secret, qrCodeUrl, otpauthUrl };
+  }
+
+  async enableMfa(
+    userId: string,
+    token: string
+  ): Promise<{ message: string; backupCodes: string[] }> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.mfaEnabled) throw new BadRequestException('MFA is already enabled');
+    if (!user.mfaSecretEncrypted) throw new BadRequestException('MFA setup not initiated');
+
+    const secret = Buffer.from(user.mfaSecretEncrypted, 'base64').toString();
+    const isValid = authenticator.verify({ token, secret });
+    if (!isValid) throw new BadRequestException('Invalid TOTP code');
+
+    // Generate 8 backup codes
+    const backupCodes = Array.from({ length: 8 }, () => randomBytes(4).toString('hex'));
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { mfaEnabled: true },
+      }),
+      prisma.mfaBackupCode.createMany({
+        data: backupCodes.map(code => ({
+          userId,
+          codeHash: createHash('sha256').update(code).digest('hex'),
+        })),
+      }),
+    ]);
+
+    return { message: 'MFA enabled successfully', backupCodes };
+  }
+
+  async disableMfa(userId: string, token: string): Promise<{ message: string }> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.mfaEnabled) throw new BadRequestException('MFA is not enabled');
+    if (!user.mfaSecretEncrypted) throw new BadRequestException('MFA secret not found');
+
+    const secret = Buffer.from(user.mfaSecretEncrypted, 'base64').toString();
+    const isValid = authenticator.verify({ token, secret });
+    if (!isValid) throw new BadRequestException('Invalid TOTP code');
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { mfaEnabled: false, mfaSecretEncrypted: null },
+      }),
+      prisma.mfaBackupCode.deleteMany({ where: { userId } }),
+    ]);
+
+    return { message: 'MFA disabled successfully' };
+  }
+
+  async verifyMfaToken(userId: string, token: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { mfaBackupCodes: true },
+    });
+    if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) return false;
+
+    const secret = Buffer.from(user.mfaSecretEncrypted, 'base64').toString();
+
+    // Check TOTP token
+    if (authenticator.verify({ token, secret })) return true;
+
+    // Check backup codes
+    const codeHash = createHash('sha256').update(token).digest('hex');
+    const backupCode = user.mfaBackupCodes.find(bc => bc.codeHash === codeHash && !bc.usedAt);
+    if (backupCode) {
+      await prisma.mfaBackupCode.update({
+        where: { id: backupCode.id },
+        data: { usedAt: new Date() },
+      });
+      return true;
+    }
+
+    return false;
   }
 
   async resendVerificationEmail(email: string): Promise<{ message: string }> {

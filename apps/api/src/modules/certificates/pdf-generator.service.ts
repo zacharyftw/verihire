@@ -44,6 +44,11 @@ export class PdfGeneratorService {
    * @returns PDF buffer
    */
   async generatePdf(certificate: CertificateResponseDto): Promise<Buffer> {
+    const qrBuffer = await this.qrCodeService.generateBuffer(
+      certificate.verification.verificationUrl,
+      120
+    );
+
     return new Promise((resolve, reject) => {
       try {
         const chunks: Buffer[] = [];
@@ -75,7 +80,7 @@ export class PdfGeneratorService {
         this.drawSkillInfo(doc, certificate);
         this.drawScoreSection(doc, certificate);
         this.drawDates(doc, certificate);
-        this.drawVerificationSection(doc, certificate);
+        this.drawVerificationSection(doc, certificate, qrBuffer);
         this.drawFooter(doc, certificate);
 
         // Finalize
@@ -331,13 +336,18 @@ export class PdfGeneratorService {
 
   private drawVerificationSection(
     doc: PDFKit.PDFDocument,
-    certificate: CertificateResponseDto
+    certificate: CertificateResponseDto,
+    qrBuffer?: Buffer
   ): void {
     const qrX = this.PAGE_WIDTH - 200;
     const qrY = 350;
 
-    // QR code placeholder box
-    doc.rect(qrX, qrY, 120, 120).lineWidth(1).stroke(this.COLORS.lightText);
+    // QR code — embed real image or fallback to placeholder box
+    if (qrBuffer) {
+      doc.image(qrBuffer, qrX, qrY, { width: 120, height: 120 });
+    } else {
+      doc.rect(qrX, qrY, 120, 120).lineWidth(1).stroke(this.COLORS.lightText);
+    }
 
     // QR code label
     doc
