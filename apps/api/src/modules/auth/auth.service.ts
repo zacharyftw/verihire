@@ -160,8 +160,14 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
 
-      // Generate new tokens
-      return this.generateAuthResponse(user, payload.sessionId);
+      // Revoke old session before issuing new tokens
+      await prisma.session.update({
+        where: { id: payload.sessionId },
+        data: { revokedAt: new Date() },
+      });
+
+      // Generate new tokens with a fresh session
+      return this.generateAuthResponse(user);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
