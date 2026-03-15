@@ -4,7 +4,7 @@ import { SubmissionsService } from './submissions.service';
 import { SubmissionStatus } from '@verihire/database';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/guards/roles.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('submissions-admin')
 @ApiBearerAuth()

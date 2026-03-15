@@ -8,7 +8,6 @@ import {
   HttpCode,
   HttpStatus,
   Res,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -134,48 +133,6 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Email already verified' })
   async sendVerification(@Request() req: any) {
     return this.authService.sendVerificationEmail(req.user.sub);
-  }
-
-  // =========================================================================
-  // MFA — TOTP
-  // =========================================================================
-
-  @Post('mfa/setup')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Initiate MFA setup — returns secret and QR code' })
-  async mfaSetup(@Request() req: any) {
-    return this.authService.setupMfa(req.user.sub);
-  }
-
-  @Post('mfa/enable')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Enable MFA by confirming TOTP token' })
-  async mfaEnable(@Request() req: any, @Body() body: { token: string }) {
-    return this.authService.enableMfa(req.user.sub, body.token);
-  }
-
-  @Post('mfa/disable')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Disable MFA by confirming TOTP token' })
-  async mfaDisable(@Request() req: any, @Body() body: { token: string }) {
-    return this.authService.disableMfa(req.user.sub, body.token);
-  }
-
-  @Post('mfa/verify')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Verify a TOTP token or backup code' })
-  async mfaVerify(@Request() req: any, @Body() body: { token: string }) {
-    const valid = await this.authService.verifyMfaToken(req.user.sub, body.token);
-    if (!valid) throw new UnauthorizedException('Invalid MFA token');
-    return { valid: true };
   }
 
   // =========================================================================
