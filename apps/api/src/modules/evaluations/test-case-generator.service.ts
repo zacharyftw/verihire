@@ -25,8 +25,7 @@ export class TestCaseGeneratorService {
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('openai.apiKey') || '';
     this.model = this.configService.get<string>('openai.model') || 'llama-3.3-70b-versatile';
-    this.baseUrl =
-      this.configService.get<string>('openai.baseUrl') || 'https://api.groq.com/openai/v1';
+    this.baseUrl = this.configService.get<string>('openai.baseUrl', 'https://api.openai.com/v1');
   }
 
   async generateTestCases(params: {

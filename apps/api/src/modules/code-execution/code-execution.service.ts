@@ -298,7 +298,6 @@ export class CodeExecutionService {
       .replace(/\s+\]/g, ']') // "1 ]" → "1]"
       .replace(/\{\s+/g, '{') // "{ key" → "{key"
       .replace(/\s+\}/g, '}') // "key }" → "key}"
-      .replace(/:\s+/g, ':') // "key: val" → "key:val"
       .toLowerCase(); // case-insensitive
   }
 

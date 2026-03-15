@@ -237,8 +237,8 @@ export class EvaluationsService {
       if (allTestCases.length > 0) {
         overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
       } else {
-        // No test cases — 100% code quality
-        overallScore = codeQualityScore;
+        // No test cases ran — score is 0, cannot evaluate without execution
+        overallScore = 0;
       }
 
       // Build criteria scores
