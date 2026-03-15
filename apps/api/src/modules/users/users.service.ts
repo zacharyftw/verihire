@@ -16,7 +16,6 @@ export class UsersService {
         avatarUrl: true,
         status: true,
         userType: true,
-        mfaEnabled: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -65,30 +64,6 @@ export class UsersService {
     return prisma.user.update({
       where: { id: userId },
       data: { lastLoginAt: new Date() },
-    });
-  }
-
-  async setMfaSecret(userId: string, secret: string) {
-    return prisma.user.update({
-      where: { id: userId },
-      data: { mfaSecretEncrypted: secret },
-    });
-  }
-
-  async enableMfa(userId: string) {
-    return prisma.user.update({
-      where: { id: userId },
-      data: { mfaEnabled: true },
-    });
-  }
-
-  async disableMfa(userId: string) {
-    return prisma.user.update({
-      where: { id: userId },
-      data: {
-        mfaEnabled: false,
-        mfaSecretEncrypted: null,
-      },
     });
   }
 

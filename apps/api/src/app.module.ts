@@ -18,6 +18,7 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { RecruitersModule } from './modules/recruiters/recruiters.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ResumeAnalysisModule } from './modules/resume-analysis/resume-analysis.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -69,6 +70,7 @@ import configuration from './config/configuration';
     RecruitersModule,
     CompaniesModule,
     AnalyticsModule,
+    ResumeAnalysisModule,
   ],
 })
 export class AppModule {}

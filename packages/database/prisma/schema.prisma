@@ -47,10 +47,6 @@ model User {
   status         UserStatus @default(ACTIVE)
   userType       UserType   @map("user_type")
 
-  // MFA
-  mfaEnabled          Boolean @default(false) @map("mfa_enabled")
-  mfaSecretEncrypted  String? @map("mfa_secret_encrypted") @db.Text
-
   // OAuth
   oauthProvider   OAuthProvider? @map("oauth_provider")
   oauthProviderId String?        @map("oauth_provider_id") @db.VarChar(255)
@@ -63,9 +59,6 @@ model User {
   // Relations
   userRoles         UserRole[]
   sessions          Session[]
-  mfaBackupCodes    MfaBackupCode[]
-  passwordResetTokens PasswordResetToken[]
-  emailVerificationTokens EmailVerificationToken[]
   candidateProfile  CandidateProfile?
   recruiterProfile  RecruiterProfile?
   challengeTemplatesCreated ChallengeTemplate[]
@@ -106,48 +99,6 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
-}
-
-model MfaBackupCode {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  codeHash  String    @map("code_hash") @db.VarChar(64)
-  usedAt    DateTime? @map("used_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("mfa_backup_codes")
-}
-
-model PasswordResetToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz
-  usedAt    DateTime? @map("used_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("password_reset_tokens")
-}
-
-model EmailVerificationToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz
-  usedAt    DateTime? @map("used_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("email_verification_tokens")
 }
 
 // =============================================================================
@@ -204,6 +155,13 @@ model CandidateProfile {
   averageScore             Decimal @default(0) @map("average_score") @db.Decimal(5, 2)
   certificatesCount        Int     @default(0) @map("certificates_count")
   reputationScore          Decimal @default(50) @map("reputation_score") @db.Decimal(5, 2)
+
+  // Resume analysis (AI-extracted)
+  resumeText           String?   @map("resume_text") @db.Text
+  resumeSeniorityLevel String?   @map("resume_seniority_level") @db.VarChar(20)
+  resumeDomains        String[]  @default([]) @map("resume_domains")
+  resumeYearsExp       Float?    @map("resume_years_exp")
+  resumeAnalyzedAt     DateTime? @map("resume_analyzed_at") @db.Timestamptz
 
   // Timestamps
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz

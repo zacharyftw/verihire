@@ -1,13 +1,4 @@
 services:
-  # Mailhog for local email testing
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: verihire-mailhog
-    restart: unless-stopped
-    ports:
-      - '1025:1025' # SMTP
-      - '8025:8025' # Web UI
-
   # Judge0 CE - Code Execution Sandbox
   judge0-server:
     image: judge0/judge0:1.13.0
