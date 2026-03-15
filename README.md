@@ -1,121 +1,39 @@
 # VeriHire
 
-> AI-Powered Skill Certification and Hiring Platform
+> AI-Powered Developer Assessment & Hiring Platform
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://www.python.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node-20+-green)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-9.0-orange)](https://pnpm.io/)
 
-VeriHire is a modern hiring platform that uses AI/ML to objectively evaluate developer skills through hands-on challenges. Candidates complete real-world coding challenges that are evaluated by **CodeBERT** and **BERT** models, earn verifiable certificates, and get matched to jobs using **Neural Collaborative Filtering**.
+VeriHire is a hiring platform that lets companies assess developers through real coding challenges. Candidates submit code, it gets executed in a sandbox, evaluated by an LLM, and if they pass — they earn a blockchain-anchored certificate. Recruiters get verified skill profiles instead of self-reported CVs.
 
-## Why VeriHire?
+---
 
-- 🤖 **AI-Powered Evaluation** - CodeBERT analyzes code quality, BERT evaluates written responses
-- 🎯 **Real Skills, Real Challenges** - No more whiteboard interviews or trivia questions
-- 🏆 **Verifiable Certificates** - Blockchain-backed skill certifications that recruiters can trust
-- 🔗 **Smart Matching** - Neural Collaborative Filtering matches candidates to jobs based on verified skills
-- 👥 **Peer Review System** - Community-driven quality control with reputation scoring
-- 📊 **Data-Driven Insights** - Detailed analytics for both candidates and recruiters
+## How It Works
+
+1. **Candidate uploads resume** → AI parses it, extracts years of experience, tech domains, and seniority level (entry / junior / mid / senior / staff)
+2. **Candidate takes a challenge** → writes code in a Monaco editor, submits
+3. **Code runs in Judge0** → sandboxed execution against LLM-generated test cases
+4. **Groq/Llama 3.3 evaluates** → test accuracy (60%) + code quality (40%) = final score
+5. **If passing score** → PDF certificate generated, ECDSA-signed, blockchain hash recorded
+6. **Recruiter searches** → verified skill profiles, candidate seniority, domain breakdown
 
 ---
 
 ## Tech Stack
 
-### Frontend
-
-- **Next.js 14** - React framework with App Router
-- **React 18** - UI library
-- **Tailwind CSS** - Utility-first styling
-
-### Backend
-
-- **NestJS 10** - Node.js framework with TypeScript
-- **Prisma 5** - Type-safe ORM
-- **PostgreSQL** - Primary database
-- **Redis** - Caching and rate limiting
-- **JWT** - Authentication
-
-### ML Service
-
-- **FastAPI** - High-performance Python API
-- **CodeBERT** - Code quality evaluation (Microsoft)
-- **BERT** - Text analysis and evaluation
-- **NCF** - Neural Collaborative Filtering for job matching
-- **PyTorch** - ML framework
-
-### Infrastructure
-
-- **Docker & Docker Compose** - Containerization
-- **Turborepo** - Monorepo build system
-- **pnpm** - Fast, disk space efficient package manager
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- **Node.js** >= 20.0.0
-- **pnpm** >= 9.0.0
-- **Python** >= 3.11
-- **Docker & Docker Compose**
-- **PostgreSQL** 15+ (or use Docker)
-- **Redis** 7+ (or use Docker)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/verihire.git
-cd verihire
-
-# Install dependencies
-pnpm install
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your configuration
-
-# Start infrastructure (PostgreSQL, Redis)
-pnpm docker:up
-
-# Generate Prisma client and run migrations
-pnpm db:generate
-pnpm db:migrate
-
-# Seed the database with initial data
-pnpm db:seed
-
-# Set up ML service
-cd apps/ml
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cd ../..
-```
-
-### Running the Development Servers
-
-```bash
-# Start all services (API, Web, ML)
-pnpm dev
-
-# Or run individually:
-pnpm --filter @verihire/api dev      # API on http://localhost:4100
-pnpm --filter @verihire/web dev      # Web on http://localhost:3100
-pnpm --filter @verihire/ml dev       # ML on http://localhost:4200
-```
-
-### Access Points
-
-- **Web App**: http://localhost:3100
-- **API**: http://localhost:4100
-- **API Docs (Swagger)**: http://localhost:4100/docs
-- **ML Service**: http://localhost:4200
-- **ML Docs (Swagger)**: http://localhost:4200/docs
-- **Prisma Studio**: `pnpm db:studio` → http://localhost:5555
+| Layer          | Technology                                                |
+| -------------- | --------------------------------------------------------- |
+| Frontend       | Next.js 14 (App Router), shadcn/ui, Tailwind CSS, SWR     |
+| Backend        | NestJS 10, Prisma 5, TypeScript                           |
+| Database       | PostgreSQL via Supabase                                   |
+| File Storage   | S3-compatible via Supabase Storage                        |
+| AI / LLM       | Groq API (Llama 3.3 70B)                                  |
+| Code Execution | Judge0 CE (self-hosted or ngrok tunnel)                   |
+| Auth           | JWT (access + refresh tokens), Google OAuth, GitHub OAuth |
+| Certificates   | PDFKit + ECDSA signing + blockchain anchoring             |
+| Monorepo       | Turborepo + pnpm workspaces                               |
 
 ---
 
@@ -124,228 +42,124 @@ pnpm --filter @verihire/ml dev       # ML on http://localhost:4200
 ```
 verihire/
 ├── apps/
-│   ├── api/                 # NestJS backend API
-│   ├── web/                 # Next.js frontend
-│   └── ml/                  # FastAPI ML service
+│   ├── api/                 # NestJS backend (port 4100)
+│   └── web/                 # Next.js frontend (port 3100)
 ├── packages/
-│   ├── database/            # Prisma schema and migrations
-│   ├── types/               # Shared TypeScript types
-│   ├── utils/               # Shared utility functions
-│   └── config/              # Shared configuration (ESLint, TS)
-├── docs/                    # Documentation
-│   ├── api/                 # API specifications
-│   ├── database/            # Database schema docs
-│   ├── deployment/          # Deployment guides
-│   └── security/            # Security guidelines
-└── scripts/                 # Build and deployment scripts
+│   ├── database/            # Prisma schema + client
+│   ├── types/               # Shared TypeScript interfaces
+│   ├── utils/               # Shared utilities
+│   └── config/              # Shared ESLint/TS config
+└── docker-compose.yml       # Judge0 CE local setup
 ```
+
+### API Modules (`apps/api/src/modules/`)
+
+| Module            | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `auth`            | Register, login, refresh, logout, Google/GitHub OAuth   |
+| `users`           | User accounts and roles                                 |
+| `candidates`      | Candidate profiles, skills, resume upload + AI analysis |
+| `recruiters`      | Recruiter profiles                                      |
+| `companies`       | Company management                                      |
+| `challenges`      | Challenge CRUD, templates                               |
+| `submissions`     | Code submission handling                                |
+| `evaluations`     | LLM evaluation pipeline                                 |
+| `code-execution`  | Judge0 CE integration                                   |
+| `certificates`    | PDF generation, ECDSA signing, blockchain anchoring     |
+| `skills`          | Skill taxonomy                                          |
+| `jobs`            | Job postings                                            |
+| `reviews`         | Peer review system                                      |
+| `storage`         | S3 file upload/download                                 |
+| `blockchain`      | Certificate hash anchoring                              |
+| `analytics`       | Platform analytics                                      |
+| `resume-analysis` | PDF parsing, seniority detection, domain extraction     |
+| `health`          | Health check endpoint                                   |
 
 ---
 
-## Key Features
+## Quick Start
 
-### For Candidates
+### Prerequisites
 
-- **Take Skill Challenges** - Complete real-world coding, design, or written challenges
-- **Get AI Feedback** - Receive detailed analysis of your code quality and approach
-- **Earn Certificates** - Blockchain-verified skill certifications
-- **Build Portfolio** - Showcase your verified skills to recruiters
-- **Peer Review** - Review others' work and build reputation
+- Node.js >= 20
+- pnpm >= 9
+- Docker (for Judge0 local code execution)
 
-### For Recruiters
-
-- **Search by Verified Skills** - Find candidates with proven abilities
-- **Smart Job Matching** - AI recommends best-fit candidates
-- **View Detailed Profiles** - See actual work samples and scores
-- **Create Custom Challenges** - Tailor assessments to your needs
-- **Track Analytics** - Monitor hiring pipeline metrics
-
-### For the Platform
-
-- **Code Evaluation** - CodeBERT analyzes complexity, readability, maintainability, security
-- **Text Evaluation** - BERT assesses coherence, depth, relevance, clarity
-- **Candidate Matching** - NCF model trained on skill-job interactions
-- **Review Quality Analysis** - ML detects bias and low-effort reviews
-- **Fraud Detection** - Anti-cheating measures and plagiarism detection
-
----
-
-## API Documentation
-
-Full API documentation is available at:
-
-- **Swagger UI**: http://localhost:4100/docs (when running locally)
-- **Detailed Specs**: [docs/api/README.md](./docs/api/README.md)
-
-### Quick API Examples
-
-**Register a user:**
+### Setup
 
 ```bash
-curl -X POST http://localhost:4100/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "dev@example.com",
-    "password": "SecurePass123!",
-    "firstName": "Jane",
-    "lastName": "Developer",
-    "role": "CANDIDATE"
-  }'
+# Install dependencies
+pnpm install
+
+# Copy and fill in environment variables
+cp .env.example .env
+
+# Generate Prisma client
+pnpm db:generate
+
+# Seed the database
+pnpm db:seed
+
+# Start Judge0 (code execution sandbox)
+pnpm docker:up
+
+# Start dev servers (API :4100, Web :3100)
+pnpm dev
 ```
 
-**Evaluate code with ML:**
+### Access Points
 
-```bash
-curl -X POST http://localhost:4200/api/v1/evaluate/code \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)",
-    "language": "python"
-  }'
-```
-
----
-
-## ML Service
-
-The ML service provides AI-powered evaluation and matching capabilities. See [apps/ml/README.md](./apps/ml/README.md) for detailed documentation.
-
-### Test the ML Service
-
-Once running, visit http://localhost:4200/docs for an interactive API playground.
-
-**Code Evaluation:**
-
-- Analyzes complexity, readability, maintainability, security
-- Returns scores (0-100) and improvement suggestions
-- Supports Python, JavaScript, TypeScript, Java, C++, Go
-
-**Text Evaluation:**
-
-- Evaluates written responses for technical depth
-- Checks relevance, coherence, clarity, originality
-- Used for design documents and architecture explanations
-
-**Candidate Matching:**
-
-- Neural Collaborative Filtering (NCF) model
-- Matches candidates to jobs based on verified skills
-- Considers skill scores, experience, and historical data
-
-**Review Quality:**
-
-- Detects low-effort or biased reviews
-- Analyzes thoroughness, consistency, timing
-- Protects platform integrity
-
----
-
-## Development
-
-### Available Scripts
-
-```bash
-# Development
-pnpm dev                    # Start all services in dev mode
-pnpm build                  # Build all packages and apps
-pnpm lint                   # Lint all code
-pnpm lint:fix               # Fix linting issues
-pnpm typecheck              # Type check TypeScript code
-
-# Testing
-pnpm test                   # Run all tests
-pnpm test:coverage          # Run tests with coverage
-pnpm test:e2e               # Run end-to-end tests
-
-# Database
-pnpm db:generate            # Generate Prisma client
-pnpm db:migrate             # Run database migrations
-pnpm db:push                # Push schema to database (dev)
-pnpm db:seed                # Seed database with test data
-pnpm db:studio              # Open Prisma Studio
-
-# Docker
-pnpm docker:up              # Start PostgreSQL and Redis
-pnpm docker:down            # Stop all containers
-pnpm docker:logs            # View container logs
-
-# Formatting
-pnpm format                 # Format all code with Prettier
-pnpm format:check           # Check formatting
-
-# Cleanup
-pnpm clean                  # Remove node_modules and build artifacts
-```
-
-### Working with the Monorepo
-
-This is a **Turborepo** monorepo managed with **pnpm workspaces**.
-
-**Run commands in specific workspace:**
-
-```bash
-pnpm --filter @verihire/api <command>
-pnpm --filter @verihire/web <command>
-pnpm --filter @verihire/database <command>
-```
-
-**Add dependencies:**
-
-```bash
-# Add to root
-pnpm add -D <package>
-
-# Add to specific workspace
-pnpm --filter @verihire/api add <package>
-```
-
-**Create new workspace:**
-
-```bash
-# Apps
-mkdir apps/new-app
-cd apps/new-app
-pnpm init
-
-# Packages
-mkdir packages/new-package
-cd packages/new-package
-pnpm init
-```
+| Service       | URL                                      |
+| ------------- | ---------------------------------------- |
+| Web App       | http://localhost:3100                    |
+| API           | http://localhost:4100                    |
+| Swagger Docs  | http://localhost:4100/docs               |
+| Prisma Studio | http://localhost:5555 (`pnpm db:studio`) |
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
-
 ```bash
-# API
+# App
 PORT=4100
 NODE_ENV=development
 API_URL=http://localhost:4100
+APP_URL=http://localhost:3100
 
-# Database
-DATABASE_URL=postgresql://verihire:verihire_dev@localhost:5432/verihire
+# Database (Supabase PostgreSQL)
+DATABASE_URL=postgresql://...
 
-# Redis
-REDIS_URL=redis://:verihire_dev@localhost:6379
+# Supabase Storage
+S3_ENDPOINT=https://<project>.supabase.co/storage/v1/s3
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
+S3_BUCKET=verihire
 
 # JWT
-JWT_ACCESS_SECRET=your-secret-key-here
-JWT_REFRESH_SECRET=your-refresh-secret-here
+JWT_SECRET=...
+JWT_ACCESS_SECRET=...
+JWT_REFRESH_SECRET=...
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# ML Service
-ML_SERVICE_URL=http://localhost:4200
-ML_SERVICE_ENABLED=true
+# OAuth
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
 
-# Email (optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
+# Groq (LLM - test case generation, evaluation, resume analysis)
+OPENAI_API_KEY=...              # Your Groq API key
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+OPENAI_MODEL=llama-3.3-70b-versatile
+
+# Judge0 (code execution)
+JUDGE0_URL=http://localhost:2358
+
+# Certificate signing (ECDSA secp256k1)
+CERTIFICATE_SIGNING_PRIVATE_KEY=...
+CERTIFICATE_SIGNING_PUBLIC_KEY=...
 
 # Frontend
 NEXT_PUBLIC_API_URL=http://localhost:4100
@@ -353,189 +167,138 @@ NEXT_PUBLIC_API_URL=http://localhost:4100
 
 ---
 
-## Testing
-
-### Unit Tests
+## Key Commands
 
 ```bash
-# Run all unit tests
+# Dev
+pnpm dev                           # all services
+pnpm --filter @verihire/api dev    # API only
+pnpm --filter @verihire/web dev    # Web only
+
+# Build & check
+pnpm build
+pnpm typecheck
+pnpm lint
+pnpm lint:fix
+pnpm format
+
+# Tests
 pnpm test
-
-# Run tests for specific workspace
 pnpm --filter @verihire/api test
-
-# Watch mode
 pnpm --filter @verihire/api test:watch
 
-# Coverage
-pnpm test:coverage
+# Database
+pnpm db:generate     # regenerate Prisma client after schema changes
+pnpm db:migrate      # create + apply migration (needs local DB)
+pnpm db:push         # push schema directly (Supabase)
+pnpm db:seed         # seed test data
+pnpm db:studio       # Prisma Studio GUI
+
+# Infrastructure
+pnpm docker:up       # start Judge0 CE locally
+pnpm docker:down     # stop containers
 ```
 
-### E2E Tests
+---
 
-```bash
-# Run end-to-end tests
-pnpm test:e2e
+## Evaluation Pipeline
+
+```
+Candidate submits code
+        ↓
+LLM generates test cases from challenge description
+        ↓
+(If reference solution exists) → run in Judge0 to get ground-truth outputs
+        ↓
+Run candidate code in Judge0 against test cases
+        ↓
+LLM generates feedback + code quality score
+        ↓
+Final score = (test accuracy × 60%) + (code quality × 40%)
+        ↓
+Score ≥ pass threshold → generate PDF certificate → ECDSA sign → anchor on blockchain
 ```
 
-### Manual Testing
+---
 
-Use the Swagger UIs for interactive API testing:
+## Resume Analysis Pipeline
 
-- **Main API**: http://localhost:4100/docs
-- **ML Service**: http://localhost:4200/docs
+```
+Candidate uploads PDF resume
+        ↓
+pdf-parse extracts raw text
+        ↓
+Groq extracts structured JSON: work history (company, role, start, end), domains, seniority guess
+        ↓
+Code calculates years of experience (merging overlapping jobs)
+        ↓
+Seniority validated: years = ground truth, LLM can adjust ±1 level
+        ↓
+Stored on candidate profile: seniorityLevel, domains, yearsExp, resumeText
+```
+
+Seniority bands: `< 1yr → entry`, `1–3yr → junior`, `3–6yr → mid`, `6–10yr → senior`, `10yr+ → staff`
+
+Mid-level and above also get a **take-home assignment** generated alongside domain-specific questions.
+
+---
+
+## Authentication
+
+- Email + password (bcrypt, JWT)
+- Google OAuth
+- GitHub OAuth
+- JWT access tokens (15min) + refresh tokens (7d) with rotation
+- Role-based access control: `CANDIDATE`, `RECRUITER`, `ADMIN`
+
+No email verification, no password reset, no MFA — auth is intentionally simple.
+
+---
+
+## Certificates
+
+Each certificate gets:
+
+- A unique certificate number
+- ECDSA secp256k1 signature (stable keypair stored in env)
+- SHA-256 content hash
+- PDF with embedded QR code linking to public verification page
+- Optional blockchain anchor (tx hash stored on certificate record)
+
+Public verification: `GET /api/certificates/verify/:certNumber`
 
 ---
 
 ## Deployment
 
-See [docs/deployment/README.md](./docs/deployment/README.md) for detailed deployment instructions.
+The project is configured for **Railway** deployment with `railway.toml` in each app directory.
 
-### Quick Deploy with Docker
+For Judge0: Railway blocks privileged Docker containers, so run Judge0 locally and expose it via ngrok:
 
 ```bash
-# Build images
-docker-compose -f docker-compose.prod.yml build
+# Start Judge0 locally
+pnpm docker:up
 
-# Start services
-docker-compose -f docker-compose.prod.yml up -d
+# Expose via ngrok
+ngrok http 2358
 
-# View logs
-docker-compose -f docker-compose.prod.yml logs -f
+# Set on Railway
+JUDGE0_URL=https://xxxx.ngrok.io
 ```
 
 ---
 
-## Contributing
+## Commit Convention
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+Conventional Commits enforced by commitlint + husky:
 
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests and linting (`pnpm test && pnpm lint`)
-5. Commit with conventional commits (`git commit -m 'feat: add amazing feature'`)
-6. Push to your fork (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Commit Convention
-
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation changes
-- `style:` - Code style changes (formatting, etc.)
-- `refactor:` - Code refactoring
-- `test:` - Test changes
-- `chore:` - Build process or auxiliary tool changes
+```
+feat(scope): description
+fix(scope): description
+chore(scope): description
+refactor(scope): description
+```
 
 ---
 
-## Architecture Highlights
-
-### Authentication & Authorization
-
-- JWT-based authentication with refresh tokens
-- Role-based access control (RBAC)
-- MFA support (optional)
-- Rate limiting per endpoint
-
-### Challenge System
-
-- AI-generated challenges tailored to skill level
-- Real-time code execution in sandboxed environments
-- Automated evaluation with ML models
-- Peer review system for quality control
-
-### Certificate Generation
-
-- Blockchain-backed verification (planned)
-- QR code for instant verification
-- PDF generation with unique certificate numbers
-- Public verification endpoint
-
-### ML Pipeline
-
-- Model serving with FastAPI
-- Lazy loading for faster startup
-- Response caching with Redis
-- Batch processing support
-- GPU acceleration (optional)
-
----
-
-## Performance
-
-### API Response Times
-
-- Authentication: ~50ms
-- Challenge listing: ~100ms
-- Code evaluation: ~2-3s (ML inference)
-- Text evaluation: ~1-2s (ML inference)
-
-### Optimizations
-
-- Redis caching for frequently accessed data
-- Database query optimization with Prisma
-- Lazy loading of ML models
-- CDN for static assets (production)
-- Connection pooling
-
----
-
-## Security
-
-- **Authentication**: JWT with secure httpOnly cookies
-- **Rate Limiting**: Prevents abuse and DDoS
-- **Input Validation**: class-validator on all endpoints
-- **SQL Injection**: Protected by Prisma ORM
-- **XSS Protection**: Helmet.js security headers
-- **CORS**: Configurable origin whitelist
-- **Secrets Management**: Environment variables, never committed
-- **Code Execution**: Sandboxed containers for challenge evaluation
-
-See [docs/security/README.md](./docs/security/README.md) for detailed security guidelines.
-
----
-
-## Roadmap
-
-- [ ] Mobile app (React Native)
-- [ ] Blockchain certificate verification
-- [ ] Video interview integration
-- [ ] More ML models (GPT integration for challenge generation)
-- [ ] Real-time collaborative coding challenges
-- [ ] Company profiles and branding
-- [ ] Advanced analytics dashboard
-- [ ] API rate limiting tiers
-- [ ] Internationalization (i18n)
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## Support
-
-- **Documentation**: [docs/](./docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/verihire/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/verihire/discussions)
-
----
-
-## Acknowledgments
-
-- **CodeBERT** - Microsoft Research
-- **BERT** - Google Research
-- **Neural Collaborative Filtering** - He et al., 2017
-- All the amazing open-source projects we depend on
-
----
-
-**Built with ❤️ by the VeriHire Team**
+**Built for final year project — VeriHire**
