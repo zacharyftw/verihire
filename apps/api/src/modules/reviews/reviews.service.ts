@@ -11,7 +11,6 @@ import { ConflictDetectionService } from './conflict-detection.service';
 import { ReviewQualityService } from './review-quality.service';
 import { ReputationService } from './reputation.service';
 import { ScoreAggregationService } from './score-aggregation.service';
-import { MailService } from '../mail/mail.service';
 
 interface RankedReviewer {
   id: string;
@@ -42,8 +41,7 @@ export class ReviewsService {
     private readonly conflictDetection: ConflictDetectionService,
     private readonly reviewQuality: ReviewQualityService,
     private readonly reputation: ReputationService,
-    private readonly scoreAggregation: ScoreAggregationService,
-    private readonly mailService: MailService
+    private readonly scoreAggregation: ScoreAggregationService
   ) {}
 
   /**
@@ -138,12 +136,7 @@ export class ReviewsService {
         });
 
         if (reviewerUser?.email) {
-          this.mailService.sendReviewAssignedEmail(reviewerUser.email, {
-            reviewerName: reviewerUser.firstName || 'Reviewer',
-            skillName: submission.challenge?.skill?.name || 'Unknown Skill',
-            deadline: deadline.toISOString().split('T')[0],
-            reviewUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reviews/${review.id}`,
-          });
+          // email removed
         }
       } catch (error) {
         this.logger.warn(`Failed to send review assignment email: ${error}`);
@@ -376,20 +369,7 @@ export class ReviewsService {
       });
 
       if (candidate?.email && reviewStatus === 'SUBMITTED') {
-        // Get skill name if available
-        let skillName = 'Unknown Skill';
-        if (review.submission.challenge?.skillId) {
-          const skill = await prisma.skill.findUnique({
-            where: { id: review.submission.challenge.skillId },
-          });
-          skillName = skill?.name || skillName;
-        }
-
-        this.mailService.sendReviewAssignedEmail(candidate.email, {
-          reviewerName: candidate.firstName || 'Candidate',
-          skillName,
-          reviewUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/submissions/${review.submissionId}`,
-        });
+        // email notifications removed
       }
     } catch (error) {
       this.logger.warn(`Failed to send review completion email: ${error}`);
