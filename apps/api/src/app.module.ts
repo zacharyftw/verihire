@@ -13,7 +13,6 @@ import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
-import { MailModule } from './modules/mail/mail.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { RecruitersModule } from './modules/recruiters/recruiters.module';
@@ -65,7 +64,6 @@ import configuration from './config/configuration';
     JobsModule,
     ReviewsModule,
     CertificatesModule,
-    MailModule,
     StorageModule,
     BlockchainModule,
     RecruitersModule,
