@@ -3,9 +3,11 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { prisma, RemotePreference, JobSearchStatus, SkillLevel } from '@verihire/database';
 import { StorageService } from '../storage/storage.service';
+import { ResumeAnalysisService } from '../resume-analysis/resume-analysis.service';
 
 // Allowed resume file types
 const ALLOWED_RESUME_TYPES = [
@@ -28,7 +30,12 @@ const MAX_PORTFOLIO_SIZE = 50 * 1024 * 1024; // 50MB
 
 @Injectable()
 export class CandidatesService {
-  constructor(private readonly storageService: StorageService) {}
+  private readonly logger = new Logger(CandidatesService.name);
+
+  constructor(
+    private readonly storageService: StorageService,
+    private readonly resumeAnalysisService: ResumeAnalysisService
+  ) {}
   async getProfile(candidateId: string) {
     const profile = await prisma.candidateProfile.findUnique({
       where: { id: candidateId },
@@ -530,6 +537,29 @@ export class CandidatesService {
       data: { resumeUrl: result.url },
     });
 
+    // Trigger resume analysis async (fire and forget) - only for PDFs
+    if (file.mimetype === 'application/pdf') {
+      this.resumeAnalysisService
+        .analyzeResume(file.buffer, file.mimetype)
+        .then(async analysis => {
+          await prisma.candidateProfile.update({
+            where: { id: candidateId },
+            data: {
+              resumeText: analysis.resumeText,
+              resumeSeniorityLevel: analysis.seniorityLevel,
+              resumeDomains: analysis.domains,
+              resumeYearsExp: analysis.totalYearsExp,
+              yearsExperience: Math.round(analysis.totalYearsExp),
+              resumeAnalyzedAt: new Date(),
+            },
+          });
+          this.logger.log(
+            `Resume analyzed for candidate ${candidateId}: ${analysis.seniorityLevel}, ${analysis.totalYearsExp}yr, domains: ${analysis.domains.join(', ')}`
+          );
+        })
+        .catch(err => this.logger.warn(`Resume analysis failed for ${candidateId}: ${err}`));
+    }
+
     return { url: result.url, key: result.key };
   }
 
@@ -644,5 +674,31 @@ export class CandidatesService {
     await this.storageService.deleteFile(fileKey);
 
     return { success: true };
+  }
+
+  async getResumeAnalysis(candidateId: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: {
+        resumeSeniorityLevel: true,
+        resumeDomains: true,
+        resumeYearsExp: true,
+        resumeAnalyzedAt: true,
+        resumeUrl: true,
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    return {
+      analyzed: !!profile.resumeAnalyzedAt,
+      analyzedAt: profile.resumeAnalyzedAt,
+      seniorityLevel: profile.resumeSeniorityLevel,
+      domains: profile.resumeDomains,
+      yearsExperience: profile.resumeYearsExp,
+      hasResume: !!profile.resumeUrl,
+    };
   }
 }

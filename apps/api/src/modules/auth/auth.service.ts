@@ -227,7 +227,6 @@ export class AuthService {
         lastName: user.lastName,
         avatarUrl: user.avatarUrl,
         userType: user.userType,
-        mfaEnabled: user.mfaEnabled,
         roles: roles.map((r: { role: string }) => r.role),
       },
       tokens: {

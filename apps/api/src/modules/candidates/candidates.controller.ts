@@ -361,4 +361,12 @@ export class CandidatesController {
     const decodedKey = decodeURIComponent(key);
     return this.candidatesService.deletePortfolioFile(candidateId, decodedKey);
   }
+
+  @Get(':id/resume-analysis')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get AI resume analysis for a candidate' })
+  async getResumeAnalysis(@Param('id') id: string) {
+    return this.candidatesService.getResumeAnalysis(id);
+  }
 }

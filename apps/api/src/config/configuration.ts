@@ -6,10 +6,6 @@ export default () => ({
     url: process.env.DATABASE_URL,
   },
 
-  redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
-  },
-
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET || 'access-secret-change-in-production',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-change-in-production',
@@ -28,14 +24,6 @@ export default () => ({
       clientId: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
     },
-  },
-
-  mail: {
-    host: process.env.MAIL_HOST || 'localhost',
-    port: parseInt(process.env.MAIL_PORT || '1025', 10),
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
-    from: process.env.MAIL_FROM || 'noreply@verihire.local',
   },
 
   storage: {
