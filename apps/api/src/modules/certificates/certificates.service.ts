@@ -5,7 +5,6 @@ import { CryptoService } from './crypto.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { QrCodeService } from './qrcode.service';
 import { StorageService } from '../storage/storage.service';
-import { QueueService } from '../queue/queue.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import {
   CertificateData,
@@ -42,7 +41,6 @@ export class CertificatesService {
     private readonly pdfGeneratorService: PdfGeneratorService,
     private readonly qrCodeService: QrCodeService,
     private readonly storageService: StorageService,
-    private readonly queueService: QueueService,
     private readonly blockchainService: BlockchainService
   ) {
     this.baseUrl = this.configService.get<string>('APP_URL', 'https://verihire.io');
@@ -205,16 +203,20 @@ export class CertificatesService {
 
     this.logger.log(`Generated certificate ${certificateNumber} for submission ${submissionId}`);
 
-    // Queue blockchain anchoring if enabled
     if (this.configService.get('FEATURE_BLOCKCHAIN_ENABLED') === 'true') {
-      await this.queueService.addCertificateJob({
-        type: 'anchor-blockchain',
-        certificateId: certificate.id,
-        data: {
-          certificateNumber: certificate.certificateNumber,
-          hash,
-        },
-      });
+      this.blockchainService
+        .anchorCertificate(certificate.certificateNumber, hash)
+        .then(result =>
+          prisma.certificate.update({
+            where: { id: certificate.id },
+            data: {
+              blockchainTxId: result.txHash,
+              blockchainNetwork: result.network,
+              blockNumber: BigInt(result.blockNumber),
+            },
+          })
+        )
+        .catch(err => this.logger.error(`Blockchain anchoring failed: ${err.message}`));
     }
 
     return {

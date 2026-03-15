@@ -11,7 +11,7 @@ import { ConflictDetectionService } from './conflict-detection.service';
 import { ReviewQualityService } from './review-quality.service';
 import { ReputationService } from './reputation.service';
 import { ScoreAggregationService } from './score-aggregation.service';
-import { QueueService } from '../queue/queue.service';
+import { MailService } from '../mail/mail.service';
 
 interface RankedReviewer {
   id: string;
@@ -43,7 +43,7 @@ export class ReviewsService {
     private readonly reviewQuality: ReviewQualityService,
     private readonly reputation: ReputationService,
     private readonly scoreAggregation: ScoreAggregationService,
-    private readonly queueService: QueueService
+    private readonly mailService: MailService
   ) {}
 
   /**
@@ -138,17 +138,11 @@ export class ReviewsService {
         });
 
         if (reviewerUser?.email) {
-          await this.queueService.addEmailJob({
-            type: 'review-assigned',
-            to: reviewerUser.email,
-            subject: 'New Review Assignment - VeriHire',
-            templateData: {
-              reviewerName: reviewerUser.firstName || 'Reviewer',
-              submissionId: submission.id,
-              skillName: submission.challenge?.skill?.name || 'Unknown Skill',
-              deadline: deadline.toISOString().split('T')[0],
-              reviewUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reviews/${review.id}`,
-            },
+          this.mailService.sendReviewAssignedEmail(reviewerUser.email, {
+            reviewerName: reviewerUser.firstName || 'Reviewer',
+            skillName: submission.challenge?.skill?.name || 'Unknown Skill',
+            deadline: deadline.toISOString().split('T')[0],
+            reviewUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reviews/${review.id}`,
           });
         }
       } catch (error) {
@@ -391,16 +385,10 @@ export class ReviewsService {
           skillName = skill?.name || skillName;
         }
 
-        await this.queueService.addEmailJob({
-          type: 'review-assigned', // Reuse this type or add 'review-completed'
-          to: candidate.email,
-          subject: 'Your Submission Review is Complete - VeriHire',
-          templateData: {
-            candidateName: candidate.firstName || 'Candidate',
-            skillName,
-            overallScore: dto.overallScore,
-            submissionUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/submissions/${review.submissionId}`,
-          },
+        this.mailService.sendReviewAssignedEmail(candidate.email, {
+          reviewerName: candidate.firstName || 'Candidate',
+          skillName,
+          reviewUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/submissions/${review.submissionId}`,
         });
       }
     } catch (error) {

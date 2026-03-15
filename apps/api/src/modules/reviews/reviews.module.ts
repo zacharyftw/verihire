@@ -8,13 +8,11 @@ import { ReputationService } from './reputation.service';
 import { ScoreAggregationService } from './score-aggregation.service';
 import { AnomalyDetectionService } from './anomaly-detection.service';
 import { AuthModule } from '../auth/auth.module';
-import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
     ConfigModule,
     AuthModule, // For JWT guards and auth decorators
-    QueueModule, // For email notifications
   ],
   controllers: [ReviewsController],
   providers: [
