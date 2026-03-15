@@ -1,13 +1,15 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { SubmissionsService } from './submissions.service';
 import { SubmissionStatus } from '@verihire/database';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/guards/roles.decorator';
 
-/**
- * Admin/Demo endpoints for submissions
- * These endpoints bypass authentication for demo purposes
- */
 @ApiTags('submissions-admin')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
 @Controller('submissions/admin')
 export class SubmissionsAdminController {
   constructor(private readonly submissionsService: SubmissionsService) {}
