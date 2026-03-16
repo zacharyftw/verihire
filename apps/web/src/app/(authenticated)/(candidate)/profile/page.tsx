@@ -54,7 +54,7 @@ export default function ProfilePage() {
       yearsExperience: 0,
       currentRole: '',
       currentCompany: '',
-      location: '',
+      locationCity: '',
       remotePreference: undefined,
       linkedinUrl: '',
       githubUrl: '',
@@ -70,7 +70,7 @@ export default function ProfilePage() {
         yearsExperience: profile.yearsExperience || 0,
         currentRole: profile.currentRole || '',
         currentCompany: profile.currentCompany || '',
-        location: profile.locationCity || '',
+        locationCity: profile.locationCity || '',
         remotePreference: profile.remotePreference || undefined,
         linkedinUrl: profile.linkedinUrl || '',
         githubUrl: profile.githubUrl || '',
@@ -82,7 +82,13 @@ export default function ProfilePage() {
   async function onSubmit(values: ProfileValues) {
     setSaving(true);
     try {
-      await updateCandidateProfile(values);
+      const payload = {
+        ...values,
+        linkedinUrl: values.linkedinUrl || undefined,
+        githubUrl: values.githubUrl || undefined,
+        portfolioUrl: values.portfolioUrl || undefined,
+      };
+      await updateCandidateProfile(payload);
       await mutateProfile();
       toast({ title: 'Profile updated' });
     } catch (err) {
@@ -193,7 +199,7 @@ export default function ProfilePage() {
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="location"
+                  name="locationCity"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Location</FormLabel>

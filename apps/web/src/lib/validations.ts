@@ -19,7 +19,7 @@ export const profileSchema = z.object({
   yearsExperience: z.number().min(0).max(50).optional(),
   currentRole: z.string().max(100).optional(),
   currentCompany: z.string().max(100).optional(),
-  location: z.string().max(100).optional(),
+  locationCity: z.string().max(100).optional(),
   remotePreference: z.enum(['REMOTE', 'HYBRID', 'ONSITE', 'FLEXIBLE']).optional(),
   linkedinUrl: z.string().url().optional().or(z.literal('')),
   githubUrl: z.string().url().optional().or(z.literal('')),
