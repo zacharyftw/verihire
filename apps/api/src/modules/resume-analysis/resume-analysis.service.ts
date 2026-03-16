@@ -59,8 +59,11 @@ export class ResumeAnalysisService {
       return '';
     }
     try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const data = await pdfParse(buffer);
+      const pdfModule = await import('pdf-parse');
+      const pdfParse = pdfModule.default ?? pdfModule;
+      const data = await (pdfParse as unknown as (buf: Buffer) => Promise<{ text: string }>)(
+        buffer
+      );
       return data.text || '';
     } catch (error) {
       this.logger.warn(`PDF text extraction failed: ${error}`);
