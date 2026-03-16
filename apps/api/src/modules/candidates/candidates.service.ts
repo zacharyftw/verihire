@@ -472,7 +472,10 @@ export class CandidatesService {
     ]);
 
     return {
-      data: candidates,
+      data: candidates.map(c => ({
+        ...c,
+        domainScores: c.domainScores || {},
+      })),
       meta: {
         total,
         limit,
