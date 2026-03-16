@@ -41,6 +41,21 @@ export function deleteResume() {
   return api.delete('/candidates/me/resume');
 }
 
+export interface DomainScore {
+  score: number;
+  count: number;
+  level: string;
+  maxDifficulty: string;
+}
+
+export interface DomainScores {
+  domains: Record<string, DomainScore>;
+}
+
+export function useDomainScores(profileId: string | undefined) {
+  return useSWR<DomainScores>(profileId ? `/candidates/${profileId}/domain-scores` : null);
+}
+
 export function useResumeAnalysis(candidateId: string | undefined) {
   return useSWR<{
     analyzed: boolean;

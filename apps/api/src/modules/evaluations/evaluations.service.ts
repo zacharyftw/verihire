@@ -147,6 +147,12 @@ export class EvaluationsService {
         const requirements = this.parseRequirements(submission.challenge.requirements);
 
         // 5. Get test cases — use cached ones if available, otherwise generate via LLM
+        //
+        // NOTE: cachedTestCases are invalidated when referenceSolution is updated
+        // (see ChallengesService.update). However, there is no `testCasesCachedAt`
+        // timestamp to support time-based expiry or staleness detection. If TTL-based
+        // invalidation is needed in the future, add a `testCasesCachedAt` DateTime
+        // field to the Challenge model and check it here before using the cache.
         const cachedRaw = submission.challenge.cachedTestCases;
         const cachedTestCases = Array.isArray(cachedRaw)
           ? (cachedRaw as unknown as GeneratedTestCase[])
@@ -179,35 +185,41 @@ export class EvaluationsService {
             this.logger.log('Validating LLM test cases against reference solution...');
             const refLang = solutionLanguage || language;
 
-            const refResults = await this.codeExecutionService.runTestCases({
-              code: referenceSolution,
-              language: refLang,
-              testCases: generatedTestCases.map(tc => ({
-                input: tc.input,
-                expectedOutput: tc.expectedOutput,
-                name: tc.description,
-              })),
-            });
+            try {
+              const refResults = await this.codeExecutionService.runTestCases({
+                code: referenceSolution,
+                language: refLang,
+                testCases: generatedTestCases.map(tc => ({
+                  input: tc.input,
+                  expectedOutput: tc.expectedOutput,
+                  name: tc.description,
+                })),
+              });
 
-            const validatedTestCases: GeneratedTestCase[] = [];
-            for (let i = 0; i < generatedTestCases.length; i++) {
-              const refResult = refResults.results[i];
-              if (refResult && refResult.actualOutput != null && !refResult.error) {
-                validatedTestCases.push({
-                  ...generatedTestCases[i],
-                  expectedOutput: refResult.actualOutput,
-                });
-              } else {
-                this.logger.warn(
-                  `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
-                );
+              const validatedTestCases: GeneratedTestCase[] = [];
+              for (let i = 0; i < generatedTestCases.length; i++) {
+                const refResult = refResults.results[i];
+                if (refResult && refResult.actualOutput != null && !refResult.error) {
+                  validatedTestCases.push({
+                    ...generatedTestCases[i],
+                    expectedOutput: refResult.actualOutput,
+                  });
+                } else {
+                  this.logger.warn(
+                    `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
+                  );
+                }
               }
-            }
 
-            this.logger.log(
-              `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
-            );
-            generatedTestCases = validatedTestCases;
+              this.logger.log(
+                `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
+              );
+              generatedTestCases = validatedTestCases;
+            } catch (refError) {
+              this.logger.warn(
+                `Judge0 unavailable for reference validation, using LLM-generated expected outputs: ${refError}`
+              );
+            }
           } else if (!referenceSolution && generatedTestCases.length > 0) {
             this.logger.warn(
               'No reference solution available — using LLM-generated expected outputs (may contain errors)'
@@ -238,26 +250,36 @@ export class EvaluationsService {
           })),
         ];
 
-        const [executionResults, codePlagiarismResult] = await Promise.all([
-          allTestCases.length > 0
-            ? this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
-            : Promise.resolve<TestCaseResults>({
-                totalTests: 0,
-                passed: 0,
-                failed: 0,
-                accuracy: 0,
-                results: [],
-                totalExecutionTimeMs: 0,
-              }),
-          this.checkPlagiarism(submissionId, submission.challengeId, code),
-        ]);
-        plagiarismResult = codePlagiarismResult;
+        let executionResults: TestCaseResults = {
+          totalTests: 0,
+          passed: 0,
+          failed: 0,
+          accuracy: 0,
+          results: [],
+          totalExecutionTimeMs: 0,
+        };
+        let judge0Available = true;
 
-        if (allTestCases.length > 0) {
+        try {
+          const [execResults, codePlagiarismResult] = await Promise.all([
+            allTestCases.length > 0
+              ? this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
+              : Promise.resolve<TestCaseResults>(executionResults),
+            this.checkPlagiarism(submissionId, submission.challengeId, code),
+          ]);
+          executionResults = execResults;
+          plagiarismResult = codePlagiarismResult;
+        } catch (execError) {
+          this.logger.warn(`Judge0 unavailable, falling back to LLM-only evaluation: ${execError}`);
+          judge0Available = false;
+          plagiarismResult = await this.checkPlagiarism(submissionId, submission.challengeId, code);
+        }
+
+        if (judge0Available && allTestCases.length > 0) {
           this.logger.log(
             `Execution complete: ${executionResults.passed}/${executionResults.totalTests} passed (${executionResults.accuracy}%)`
           );
-        } else {
+        } else if (judge0Available) {
           this.logger.warn('No test cases available, scoring on code quality only');
         }
 
@@ -290,36 +312,59 @@ export class EvaluationsService {
           this.logger.warn(`Feedback generation failed: ${error}`);
         }
 
-        const accuracyScore = executionResults.accuracy;
-
-        if (allTestCases.length > 0) {
-          overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
+        if (!judge0Available) {
+          // LLM-only fallback: score is purely code quality, lower confidence
+          overallScore = codeQualityScore;
+          criteriaScores = {
+            correctness: {
+              score: 0,
+              maxScore: 100,
+              feedback:
+                'Code execution unavailable (Judge0 unreachable). Correctness could not be verified.',
+            },
+            code_quality: {
+              score: codeQualityScore,
+              maxScore: 100,
+              feedback:
+                codeQualityNotes || 'Code quality analysis based on structure and patterns.',
+            },
+          };
+          feedback = codeFeedback;
+          suggestions = codeSuggestions;
+          confidence = 0.5;
         } else {
-          overallScore = 0;
-        }
+          const accuracyScore = executionResults.accuracy;
 
-        criteriaScores = {
-          correctness: {
-            score: Math.round(accuracyScore),
-            maxScore: 100,
-            feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
-          },
-          code_quality: {
-            score: codeQualityScore,
-            maxScore: 100,
-            feedback: codeQualityNotes || 'Code quality analysis based on structure and patterns.',
-          },
-        };
-        feedback = codeFeedback;
-        suggestions = codeSuggestions;
-        confidence = allTestCases.length > 0 ? 0.85 : 0.5;
-        testResultsData = {
-          totalTests: executionResults.totalTests,
-          passed: executionResults.passed,
-          failed: executionResults.failed,
-          accuracy: executionResults.accuracy,
-          results: executionResults.results,
-        };
+          if (allTestCases.length > 0) {
+            overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
+          } else {
+            overallScore = 0;
+          }
+
+          criteriaScores = {
+            correctness: {
+              score: Math.round(accuracyScore),
+              maxScore: 100,
+              feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
+            },
+            code_quality: {
+              score: codeQualityScore,
+              maxScore: 100,
+              feedback:
+                codeQualityNotes || 'Code quality analysis based on structure and patterns.',
+            },
+          };
+          feedback = codeFeedback;
+          suggestions = codeSuggestions;
+          confidence = allTestCases.length > 0 ? 0.85 : 0.5;
+          testResultsData = {
+            totalTests: executionResults.totalTests,
+            passed: executionResults.passed,
+            failed: executionResults.failed,
+            accuracy: executionResults.accuracy,
+            results: executionResults.results,
+          };
+        }
       } // end CODING branch
 
       const processingTimeMs = Date.now() - startTime;
@@ -680,6 +725,7 @@ export class EvaluationsService {
     const manualTestCases = this.parseManualTestCases(submission.challenge.testCases);
     const requirements = this.parseRequirements(submission.challenge.requirements);
 
+    // Same cache-invalidation caveat as evaluateSubmission — see comment there.
     const cachedRaw = submission.challenge.cachedTestCases;
     const cachedTestCases = Array.isArray(cachedRaw)
       ? (cachedRaw as unknown as GeneratedTestCase[])
@@ -704,23 +750,29 @@ export class EvaluationsService {
       const ref = submission.challenge.referenceSolution;
       const refLang = submission.challenge.solutionLanguage || language;
       if (ref && generatedTestCases.length > 0) {
-        const refResults = await this.codeExecutionService.runTestCases({
-          code: ref,
-          language: refLang,
-          testCases: generatedTestCases.map(tc => ({
-            input: tc.input,
-            expectedOutput: tc.expectedOutput,
-            name: tc.description,
-          })),
-        });
-        generatedTestCases = generatedTestCases.filter((tc, i) => {
-          const r = refResults.results[i];
-          if (r && r.actualOutput != null && !r.error) {
-            tc.expectedOutput = r.actualOutput;
-            return true;
-          }
-          return false;
-        });
+        try {
+          const refResults = await this.codeExecutionService.runTestCases({
+            code: ref,
+            language: refLang,
+            testCases: generatedTestCases.map(tc => ({
+              input: tc.input,
+              expectedOutput: tc.expectedOutput,
+              name: tc.description,
+            })),
+          });
+          generatedTestCases = generatedTestCases.filter((tc, i) => {
+            const r = refResults.results[i];
+            if (r && r.actualOutput != null && !r.error) {
+              tc.expectedOutput = r.actualOutput;
+              return true;
+            }
+            return false;
+          });
+        } catch (refError) {
+          this.logger.warn(
+            `Judge0 unavailable for reference validation in MIXED evaluation, using LLM-generated expected outputs: ${refError}`
+          );
+        }
       }
 
       if (generatedTestCases.length > 0) {
@@ -744,17 +796,31 @@ export class EvaluationsService {
       })),
     ];
 
-    const executionResults =
-      allTestCases.length > 0
-        ? await this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
-        : ({
-            totalTests: 0,
-            passed: 0,
-            failed: 0,
-            accuracy: 0,
-            results: [],
-            totalExecutionTimeMs: 0,
-          } as TestCaseResults);
+    let executionResults: TestCaseResults = {
+      totalTests: 0,
+      passed: 0,
+      failed: 0,
+      accuracy: 0,
+      results: [],
+      totalExecutionTimeMs: 0,
+    };
+    let judge0Available = true;
+
+    try {
+      executionResults =
+        allTestCases.length > 0
+          ? await this.codeExecutionService.runTestCases({
+              code,
+              language,
+              testCases: allTestCases,
+            })
+          : executionResults;
+    } catch (execError) {
+      this.logger.warn(
+        `Judge0 unavailable, falling back to LLM-only evaluation for MIXED code part: ${execError}`
+      );
+      judge0Available = false;
+    }
 
     let codeQualityScore = 70;
     let codeFeedback = 'Evaluation complete.';
@@ -783,6 +849,34 @@ export class EvaluationsService {
       codeQualityNotes = fb.codeQualityNotes;
     } catch {
       /* use defaults */
+    }
+
+    if (!judge0Available) {
+      return {
+        score: codeQualityScore,
+        criteriaScores: {
+          correctness: {
+            score: 0,
+            maxScore: 100,
+            feedback:
+              'Code execution unavailable (Judge0 unreachable). Correctness could not be verified.',
+          },
+          code_quality: {
+            score: codeQualityScore,
+            maxScore: 100,
+            feedback: codeQualityNotes || 'Code quality analysis.',
+          },
+        },
+        feedback: codeFeedback,
+        suggestions: codeSuggestions,
+        testResultsData: {
+          totalTests: 0,
+          passed: 0,
+          failed: 0,
+          accuracy: 0,
+          results: [],
+        },
+      };
     }
 
     const accuracyScore = executionResults.accuracy;
