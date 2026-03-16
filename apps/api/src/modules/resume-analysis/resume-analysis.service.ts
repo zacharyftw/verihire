@@ -309,46 +309,60 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
 
     const { seniorityLevel, domains, totalYearsExp } = resumeContext;
     const isMidOrAbove = ['mid', 'senior', 'staff'].includes(seniorityLevel);
-    const topDomains = domains.slice(0, 6);
 
-    const difficulty =
-      seniorityLevel === 'entry' || seniorityLevel === 'junior'
-        ? 'BEGINNER'
-        : seniorityLevel === 'mid'
-          ? 'INTERMEDIATE'
-          : 'ADVANCED';
+    // Use MORE domains — up to 15 to cover the candidate's actual breadth
+    const topDomains = domains.slice(0, 15);
 
-    const systemPrompt = `You are a technical challenge designer creating personalized coding challenges based on a candidate's resume.
+    // Difficulty spread based on seniority
+    let difficultySpread: string;
+    if (seniorityLevel === 'entry') {
+      difficultySpread = '5 BEGINNER + 2 INTERMEDIATE + 1 ADVANCED';
+    } else if (seniorityLevel === 'junior') {
+      difficultySpread = '3 BEGINNER + 3 INTERMEDIATE + 2 ADVANCED';
+    } else if (seniorityLevel === 'mid') {
+      difficultySpread = '1 BEGINNER + 3 INTERMEDIATE + 3 ADVANCED + 1 EXPERT';
+    } else {
+      difficultySpread = '1 INTERMEDIATE + 3 ADVANCED + 4 EXPERT';
+    }
+
+    const systemPrompt = `You are a senior technical challenge designer creating personalized coding challenges based on a candidate's resume.
 
 RESPONSE FORMAT (JSON only, no markdown):
 {
   "challenges": [
     {
-      "title": "Challenge title",
-      "description": "Detailed problem description with input/output examples",
-      "category": "GENERAL_SWE" or "DOMAIN_SPECIFIC",
+      "title": "Unique, specific challenge title",
+      "description": "Detailed problem with 2-3 input/output examples",
+      "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT",
+      "category": "GENERAL_SWE" | "DOMAIN_SPECIFIC",
       "referenceSolution": "Complete working solution code",
-      "solutionLanguage": "python" or "javascript"
+      "solutionLanguage": "python" | "javascript" | "typescript"
     }
   ]
 }
 
-RULES:
-- Generate exactly 8 challenges
-- First 4 should be GENERAL_SWE (algorithmic/data structure problems relevant to the candidate's domain)
-- Last 4 should be DOMAIN_SPECIFIC (practical problems using the candidate's actual tech stack)
-- Difficulty should match: ${difficulty} level (${seniorityLevel}, ${totalYearsExp} years)
-- Each description must include 2-3 example inputs and expected outputs
-- Reference solutions must be complete, runnable code
-- DOMAIN_SPECIFIC challenges should test real-world skills (e.g. "Build a REST endpoint", "Write a React hook", "Create a SQL query")
+CRITICAL RULES:
+- Generate exactly 8 challenges: 4 GENERAL_SWE + 4 DOMAIN_SPECIFIC
+- Difficulty spread: ${difficultySpread}
+- Each challenge MUST have a UNIQUE title — no duplicates, no generic names like "String Reversal" or "Array Rotation"
+- GENERAL_SWE: substantial algorithmic problems (hash maps, graphs, trees, dynamic programming, sliding window, etc.) — NOT trivial one-liners
+- DOMAIN_SPECIFIC: practical, real-world problems using the candidate's SPECIFIC tech stack (not generic). Examples:
+  * If they know NestJS: "Implement a rate-limiting guard middleware"
+  * If they know React: "Build a debounced search component with abort controller"
+  * If they know Prisma: "Write a recursive category tree query with Prisma"
+  * If they know Rust: "Implement a thread-safe LRU cache"
+  * If they know Docker: "Write a multi-stage Dockerfile for a Node.js monorepo"
+- solutionLanguage MUST be "python", "javascript", or "typescript" ONLY — never "sql", "rust", "go", etc. (the sandbox only supports these 3). For domain challenges about other tech, write the solution in one of these 3 languages
+- Reference solutions must be COMPLETE, RUNNABLE, self-contained code (no external dependencies, no imports from frameworks)
+- Each description must clearly state input format, output format, and 2-3 examples
 - Output ONLY valid JSON`;
 
     const userPrompt = `CANDIDATE PROFILE:
-- Seniority: ${seniorityLevel} (${totalYearsExp} years)
-- Tech domains: ${topDomains.join(', ')}
-${isMidOrAbove ? '- Include more complex, production-level scenarios' : '- Keep challenges approachable but meaningful'}
+- Seniority: ${seniorityLevel} (${totalYearsExp} years experience)
+- Full tech stack: ${topDomains.join(', ')}
+${isMidOrAbove ? '- This is a mid/senior+ candidate — challenges should test production-level thinking, edge cases, and system design awareness' : '- Junior candidate — challenges should be meaningful but approachable, testing real understanding not just syntax'}
 
-Generate 8 personalized coding challenges for this candidate.`;
+Generate 8 unique, personalized coding challenges. Make the DOMAIN_SPECIFIC ones truly specific to their stack — not generic.`;
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -363,8 +377,8 @@ Generate 8 personalized coding challenges for this candidate.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.5,
-          max_tokens: 4096,
+          temperature: 0.6,
+          max_tokens: 8192,
         }),
       });
 
@@ -376,20 +390,29 @@ Generate 8 personalized coding challenges for this candidate.`;
         .trim();
       const parsed = JSON.parse(jsonStr);
 
+      const validLanguages = ['python', 'javascript', 'typescript'];
+
       return (parsed.challenges || []).map(
         (c: {
           title: string;
           description: string;
+          difficulty?: string;
           category?: string;
           referenceSolution: string;
           solutionLanguage?: string;
         }) => ({
           title: c.title,
           description: c.description,
-          difficulty,
+          difficulty: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT'].includes(
+            c.difficulty || ''
+          )
+            ? c.difficulty
+            : 'INTERMEDIATE',
           category: c.category || 'GENERAL_SWE',
           referenceSolution: c.referenceSolution,
-          solutionLanguage: c.solutionLanguage || 'python',
+          solutionLanguage: validLanguages.includes(c.solutionLanguage || '')
+            ? c.solutionLanguage!
+            : 'python',
         })
       );
     } catch (error) {

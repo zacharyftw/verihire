@@ -564,7 +564,26 @@ export class CandidatesService {
             totalYearsExp: analysis.totalYearsExp,
           });
 
+          // Dedup: check existing challenge titles
+          const existingTitles = await prisma.challenge.findMany({
+            select: { title: true },
+          });
+          const existingSet = new Set(existingTitles.map(c => c.title.toLowerCase()));
+
+          const timeLimitMap: Record<string, number> = {
+            BEGINNER: 25,
+            INTERMEDIATE: 35,
+            ADVANCED: 45,
+            EXPERT: 60,
+          };
+
+          let created = 0;
           for (const c of challenges) {
+            if (existingSet.has(c.title.toLowerCase())) {
+              this.logger.log(`Skipping duplicate challenge: ${c.title}`);
+              continue;
+            }
+            existingSet.add(c.title.toLowerCase());
             await prisma.challenge.create({
               data: {
                 title: c.title,
@@ -575,12 +594,13 @@ export class CandidatesService {
                 referenceSolution: c.referenceSolution,
                 solutionLanguage: c.solutionLanguage,
                 supportedLanguages: ['python', 'javascript', 'typescript'],
-                timeLimitMinutes: 30,
+                timeLimitMinutes: timeLimitMap[c.difficulty] || 30,
               },
             });
+            created++;
           }
           this.logger.log(
-            `Generated ${challenges.length} personalized challenges for candidate ${candidateId}`
+            `Generated ${created} personalized challenges for candidate ${candidateId} (${challenges.length - created} duplicates skipped)`
           );
         })
         .catch(err =>
