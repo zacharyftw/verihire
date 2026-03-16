@@ -1,6 +1,18 @@
-import { Controller, Get, Post, Param, Query, UseGuards, Request, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+  Body,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { ChallengesService } from './challenges.service';
 import { ChallengeDifficulty, ChallengeType } from '@verihire/database';
 
@@ -107,6 +119,33 @@ export class ChallengesController {
       return { error: 'User is not a candidate' };
     }
     return this.challengesService.findForCandidate(id, candidateId);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('RECRUITER', 'ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update a challenge (invalidates cached test cases when referenceSolution changes)',
+  })
+  @ApiResponse({ status: 200, description: 'Challenge updated' })
+  @ApiResponse({ status: 404, description: 'Challenge not found' })
+  async updateChallenge(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      title?: string;
+      description?: string;
+      requirements?: any;
+      referenceSolution?: string;
+      solutionLanguage?: string;
+      starterCode?: string;
+      difficulty?: ChallengeDifficulty;
+      type?: ChallengeType;
+      timeLimitMinutes?: number;
+    }
+  ) {
+    return this.challengesService.update(id, body);
   }
 
   @Post('generate')

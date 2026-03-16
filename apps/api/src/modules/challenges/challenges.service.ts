@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, ChallengeDifficulty, ChallengeType } from '@verihire/database';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { prisma, Prisma, ChallengeDifficulty, ChallengeType } from '@verihire/database';
 
 @Injectable()
 export class ChallengesService {
+  private readonly logger = new Logger(ChallengesService.name);
   async findAll(options?: {
     skillId?: string;
     difficulty?: ChallengeDifficulty;
@@ -77,6 +78,49 @@ export class ChallengesService {
     }
 
     return challenge;
+  }
+
+  async update(
+    id: string,
+    data: {
+      title?: string;
+      description?: string;
+      requirements?: any;
+      referenceSolution?: string;
+      solutionLanguage?: string;
+      starterCode?: string;
+      difficulty?: ChallengeDifficulty;
+      type?: ChallengeType;
+      timeLimitMinutes?: number;
+    }
+  ) {
+    const challenge = await prisma.challenge.findUnique({ where: { id } });
+
+    if (!challenge) {
+      throw new NotFoundException('Challenge not found');
+    }
+
+    // If the reference solution is being changed, invalidate cached test cases
+    // so they are regenerated (and re-validated) on the next evaluation.
+    const invalidateCache =
+      data.referenceSolution !== undefined &&
+      data.referenceSolution !== challenge.referenceSolution;
+
+    const updated = await prisma.challenge.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(invalidateCache ? { cachedTestCases: Prisma.DbNull } : {}),
+      },
+    });
+
+    if (invalidateCache) {
+      this.logger.log(
+        `Invalidated cached test cases for challenge ${id} due to referenceSolution change`
+      );
+    }
+
+    return updated;
   }
 
   async findForCandidate(challengeId: string, candidateId: string) {

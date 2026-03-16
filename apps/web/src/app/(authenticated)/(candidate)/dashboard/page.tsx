@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Award, Code2, FileText, TrendingUp } from 'lucide-react';
+import { Award, Code2, FileText, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { useAuth } from '@/lib/auth-context';
-import { useCandidateStats } from '@/hooks/use-candidate';
+import { useCandidateStats, useDomainScores, useCandidateProfile } from '@/hooks/use-candidate';
 import { useRecommendedChallenges } from '@/hooks/use-challenges';
 import { useMySubmissions } from '@/hooks/use-submissions';
 import {
@@ -23,6 +23,8 @@ import { StatusBadge } from '@/components/status-badge';
 export default function CandidateDashboardPage() {
   const { user } = useAuth();
   const { data: stats, isLoading: statsLoading } = useCandidateStats();
+  const { data: profile } = useCandidateProfile();
+  const { data: domainScores, isLoading: domainLoading } = useDomainScores(profile?.id);
   const { data: challenges } = useRecommendedChallenges();
   const { data: submissions } = useMySubmissions({ limit: 5 });
 
@@ -63,6 +65,57 @@ export default function CandidateDashboardPage() {
           </Card>
         ))}
       </div>
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle className="text-lg">Domain Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {domainLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : !domainScores?.domains || Object.keys(domainScores.domains).length === 0 ? (
+            <EmptyState
+              title="No domain scores yet"
+              description="Complete challenges to build your domain scores"
+            />
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(domainScores.domains).map(([name, domain]) => (
+                <div key={name} className="rounded-lg border p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{name}</p>
+                      <Badge variant="secondary">{domain.level}</Badge>
+                      {domain.score >= 70 && domain.count >= 3 && (
+                        <Badge className="bg-green-600 text-white hover:bg-green-600">
+                          <CheckCircle2 className="mr-1 h-3 w-3" />
+                          Certified
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold">{Math.round(domain.score)}%</p>
+                      <p className="text-xs text-muted-foreground">
+                        {domain.count} challenge{domain.count !== 1 ? 's' : ''} completed
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-secondary">
+                    <div
+                      className="h-2 rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.min(100, Math.round(domain.score))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Card>
