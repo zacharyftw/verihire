@@ -60,12 +60,12 @@ export class ResumeAnalysisService {
     }
     try {
       const { PDFParse } = await import('pdf-parse');
-      const parser = new PDFParse({ verbosity: 0 });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (parser as any).load(buffer);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (parser as any).getText();
-      return typeof result === 'string' ? result : String(result) || '';
+      const parser = new (PDFParse as any)({ data: buffer, verbosity: 0 });
+      const result = await parser.getText();
+      const text = result?.text ?? (typeof result === 'string' ? result : String(result));
+      await parser.destroy();
+      return text || '';
     } catch (error) {
       this.logger.warn(`PDF text extraction failed: ${error}`);
       return '';
