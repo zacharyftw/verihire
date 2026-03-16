@@ -16,7 +16,6 @@ export const registerSchema = z.object({
 export const profileSchema = z.object({
   headline: z.string().max(200).optional(),
   bio: z.string().max(2000).optional(),
-  yearsExperience: z.number().min(0).max(50).optional(),
   currentRole: z.string().max(100).optional(),
   currentCompany: z.string().max(100).optional(),
   locationCity: z.string().max(100).optional(),

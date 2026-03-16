@@ -560,6 +560,32 @@ export class CandidatesService {
             `Resume analyzed for candidate ${candidateId}: ${analysis.seniorityLevel}, ${analysis.totalYearsExp}yr, domains: ${analysis.domains.join(', ')}`
           );
 
+          // Auto-fill profile fields from resume if currently empty
+          const currentProfile = await prisma.candidateProfile.findUnique({
+            where: { id: candidateId },
+            select: { headline: true, currentRole: true, currentCompany: true, locationCity: true },
+          });
+
+          const autoFillData: Record<string, string> = {};
+          if (!currentProfile?.headline && analysis.headline)
+            autoFillData.headline = analysis.headline;
+          if (!currentProfile?.currentRole && analysis.currentRole)
+            autoFillData.currentRole = analysis.currentRole;
+          if (!currentProfile?.currentCompany && analysis.currentCompany)
+            autoFillData.currentCompany = analysis.currentCompany;
+          if (!currentProfile?.locationCity && analysis.location)
+            autoFillData.locationCity = analysis.location;
+
+          if (Object.keys(autoFillData).length > 0) {
+            await prisma.candidateProfile.update({
+              where: { id: candidateId },
+              data: autoFillData,
+            });
+            this.logger.log(
+              `Auto-filled profile fields for candidate ${candidateId}: ${Object.keys(autoFillData).join(', ')}`
+            );
+          }
+
           // Skip challenge generation if this candidate already has generated challenges
           const existingForCandidate = await prisma.challenge.count({
             where: { generatedForCandidateId: candidateId },

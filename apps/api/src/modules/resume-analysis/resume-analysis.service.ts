@@ -14,6 +14,10 @@ export interface ResumeAnalysis {
   totalYearsExp: number;
   seniorityLevel: 'entry' | 'junior' | 'mid' | 'senior' | 'staff';
   domains: string[];
+  currentRole?: string;
+  currentCompany?: string;
+  location?: string;
+  headline?: string;
 }
 
 export interface CandidateQuestions {
@@ -51,6 +55,10 @@ export class ResumeAnalysisService {
       totalYearsExp,
       seniorityLevel,
       domains: extraction.domains,
+      currentRole: extraction.currentRole,
+      currentCompany: extraction.currentCompany,
+      location: extraction.location,
+      headline: extraction.headline,
     };
   }
 
@@ -76,6 +84,10 @@ export class ResumeAnalysisService {
     workHistory: WorkEntry[];
     domains: string[];
     seniorityGuess: string;
+    currentRole?: string;
+    currentCompany?: string;
+    location?: string;
+    headline?: string;
   }> {
     if (!this.apiKey) {
       this.logger.warn('No API key configured, skipping LLM resume extraction');
@@ -92,7 +104,11 @@ RESPONSE FORMAT (JSON only, no markdown):
     { "company": "Company Name", "role": "Job Title", "start": "YYYY-MM", "end": "YYYY-MM or present" }
   ],
   "domains": ["React", "Node.js", "Python"],
-  "seniorityGuess": "entry|junior|mid|senior|staff"
+  "seniorityGuess": "entry|junior|mid|senior|staff",
+  "currentRole": "Most recent job title or null",
+  "currentCompany": "Most recent company name or null",
+  "location": "City or location mentioned or null",
+  "headline": "Short professional headline, e.g. Full-Stack Developer or null"
 }
 
 RULES:
@@ -101,6 +117,10 @@ RULES:
 - If only year is given, use YYYY-01 as approximation
 - domains: technologies, frameworks, languages, tools the person has USED
 - seniorityGuess: your assessment based on role titles and scope
+- currentRole: the person's most recent job title from workHistory (null if not found)
+- currentCompany: the company of the most recent role (null if not found)
+- location: the person's city or location if mentioned anywhere in the resume (null if not found)
+- headline: a concise professional headline summarizing the person (null if not determinable)
 - Output ONLY valid JSON, no explanation`;
 
     const userPrompt = `Parse this resume:\n\n${resumeText.slice(0, 6000)}`;
