@@ -147,7 +147,13 @@ export class CertificateService {
       );
 
       // Update candidate's skill level if they have this skill
-      await this.updateCandidateSkillLevel(data.candidateId, data.skillId, certificate.id, grade);
+      await this.updateCandidateSkillLevel(
+        data.candidateId,
+        data.skillId,
+        certificate.id,
+        grade,
+        data.domainLevel
+      );
 
       return {
         id: certificate.id,
@@ -323,22 +329,37 @@ export class CertificateService {
     candidateId: string,
     skillId: string,
     certificateId: string,
-    grade: string
+    grade: string,
+    domainLevel?: string
   ) {
-    // Map grade to skill level
-    const levelMap: Record<string, SkillLevel> = {
-      'A+': 'EXPERT',
-      A: 'EXPERT',
-      'A-': 'ADVANCED',
-      'B+': 'ADVANCED',
-      B: 'ADVANCED',
-      'B-': 'INTERMEDIATE',
-      'C+': 'INTERMEDIATE',
-      C: 'INTERMEDIATE',
-      'C-': 'BEGINNER',
+    // For domain certificates, use the domainLevel which already accounts for
+    // challenge difficulty (calculated by recalculateDomainScores).
+    // Fall back to grade-based mapping only for non-domain certificates.
+    const validLevels: Record<string, SkillLevel> = {
+      EXPERT: 'EXPERT',
+      ADVANCED: 'ADVANCED',
+      INTERMEDIATE: 'INTERMEDIATE',
+      BEGINNER: 'BEGINNER',
     };
 
-    const level: SkillLevel = levelMap[grade] || 'BEGINNER';
+    let level: SkillLevel;
+    if (domainLevel && validLevels[domainLevel]) {
+      level = validLevels[domainLevel];
+    } else {
+      // Fallback: grade-based mapping for non-domain certificates
+      const gradeMap: Record<string, SkillLevel> = {
+        'A+': 'EXPERT',
+        A: 'EXPERT',
+        'A-': 'ADVANCED',
+        'B+': 'ADVANCED',
+        B: 'ADVANCED',
+        'B-': 'INTERMEDIATE',
+        'C+': 'INTERMEDIATE',
+        C: 'INTERMEDIATE',
+        'C-': 'BEGINNER',
+      };
+      level = gradeMap[grade] || 'BEGINNER';
+    }
 
     // Check if candidate has this skill
     const existingSkill = await prisma.candidateSkill.findFirst({

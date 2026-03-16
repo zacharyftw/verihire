@@ -126,7 +126,9 @@ export default function CandidateDashboardPage() {
                     <div>
                       <p className="text-sm font-medium">{s.challenge?.title || 'Challenge'}</p>
                       <p className="text-xs text-muted-foreground">
-                        {s.finalScore != null ? `Score: ${Math.round(s.finalScore)}%` : 'Pending'}
+                        {(s.finalScore ?? s.aiScore) != null
+                          ? `Score: ${Math.round(s.finalScore ?? s.aiScore!)}%`
+                          : 'Pending'}
                       </p>
                     </div>
                     <StatusBadge

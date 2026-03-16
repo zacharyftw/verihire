@@ -23,9 +23,10 @@ export default function SubmissionResultsPage() {
   const submission = data.submission || data;
   const evaluation = data.evaluation || data;
 
-  const isPassing = submission.finalScore != null && submission.finalScore >= 70;
+  const displayScore = submission.finalScore ?? submission.aiScore;
+  const isPassing = displayScore != null && displayScore >= 70;
   const isWaiting = ['SUBMITTED', 'EVALUATING'].includes(submission.status);
-  const hasResults = submission.finalScore != null;
+  const hasResults = displayScore != null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -102,7 +103,7 @@ export default function SubmissionResultsPage() {
                   ) : (
                     <XCircle className="h-5 w-5" />
                   )}
-                  <span className="text-lg font-bold">{Math.round(submission.finalScore)}%</span>
+                  <span className="text-lg font-bold">{Math.round(displayScore)}%</span>
                   <span className="text-sm">{isPassing ? 'Passed' : 'Needs Improvement'}</span>
                 </div>
               </div>
