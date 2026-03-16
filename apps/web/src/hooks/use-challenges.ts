@@ -20,21 +20,16 @@ function buildQuery(filters: ChallengeFilters) {
 }
 
 export function useChallenges(filters: ChallengeFilters = {}) {
-  const result = useSWR<{
-    data?: Challenge[];
-    items?: Challenge[];
-    meta?: { total: number; limit: number; offset: number; hasMore: boolean };
-    pagination?: { total: number; page: number; totalPages: number };
-  }>(`/challenges${buildQuery(filters)}`);
+  // api.get() auto-unwraps data.data, so SWR receives the challenges array directly
+  const result = useSWR<Challenge[]>(`/challenges${buildQuery(filters)}`);
 
-  // Normalize API response (API returns data/meta, frontend expects items/pagination)
   const normalized = result.data
     ? {
-        items: result.data.data || result.data.items || [],
-        pagination: result.data.pagination || {
-          total: result.data.meta?.total || 0,
-          page: Math.floor((result.data.meta?.offset || 0) / (result.data.meta?.limit || 20)) + 1,
-          totalPages: Math.ceil((result.data.meta?.total || 0) / (result.data.meta?.limit || 20)),
+        items: Array.isArray(result.data) ? result.data : [],
+        pagination: {
+          total: Array.isArray(result.data) ? result.data.length : 0,
+          page: 1,
+          totalPages: 1,
         },
       }
     : undefined;
