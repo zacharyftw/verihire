@@ -556,6 +556,32 @@ export class CandidatesService {
           this.logger.log(
             `Resume analyzed for candidate ${candidateId}: ${analysis.seniorityLevel}, ${analysis.totalYearsExp}yr, domains: ${analysis.domains.join(', ')}`
           );
+
+          // Generate personalized challenges from resume
+          const challenges = await this.resumeAnalysisService.generateChallengesFromResume({
+            seniorityLevel: analysis.seniorityLevel,
+            domains: analysis.domains,
+            totalYearsExp: analysis.totalYearsExp,
+          });
+
+          for (const c of challenges) {
+            await prisma.challenge.create({
+              data: {
+                title: c.title,
+                description: c.description,
+                difficulty: c.difficulty as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT',
+                type: 'CODING',
+                category: c.category as 'GENERAL_SWE' | 'DOMAIN_SPECIFIC',
+                referenceSolution: c.referenceSolution,
+                solutionLanguage: c.solutionLanguage,
+                supportedLanguages: ['python', 'javascript', 'typescript'],
+                timeLimitMinutes: 30,
+              },
+            });
+          }
+          this.logger.log(
+            `Generated ${challenges.length} personalized challenges for candidate ${candidateId}`
+          );
         })
         .catch(err =>
           this.logger.error(
