@@ -557,7 +557,12 @@ export class CandidatesService {
             `Resume analyzed for candidate ${candidateId}: ${analysis.seniorityLevel}, ${analysis.totalYearsExp}yr, domains: ${analysis.domains.join(', ')}`
           );
         })
-        .catch(err => this.logger.warn(`Resume analysis failed for ${candidateId}: ${err}`));
+        .catch(err =>
+          this.logger.error(
+            `Resume analysis failed for ${candidateId}: ${err.message || err}`,
+            err.stack
+          )
+        );
     }
 
     return { url: result.url, key: result.key };
