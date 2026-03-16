@@ -210,7 +210,13 @@ export default function ProfilePage() {
                     <FormItem>
                       <FormLabel>Years of Experience</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={e =>
+                            field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                          }
+                        />
                       </FormControl>
                     </FormItem>
                   )}
