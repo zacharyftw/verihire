@@ -50,7 +50,11 @@ export default function VerifyCertificatePage() {
                 {data.grade && <InfoRow label="Grade" value={data.grade} />}
                 <InfoRow
                   label="Score"
-                  value={data.finalScore != null ? `${Math.round(data.finalScore)}%` : '—'}
+                  value={
+                    (data.finalScore ?? data.aiScore) != null
+                      ? `${Math.round(data.finalScore ?? data.aiScore!)}%`
+                      : '—'
+                  }
                 />
                 <InfoRow label="Issued" value={data.issuedAt ? formatDate(data.issuedAt) : '—'} />
                 {data.expiresAt && <InfoRow label="Expires" value={formatDate(data.expiresAt)} />}

@@ -86,8 +86,10 @@ export default function SubmissionsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    {sub.finalScore != null && (
-                      <span className="text-sm font-medium">{Math.round(sub.finalScore)}%</span>
+                    {(sub.finalScore ?? sub.aiScore) != null && (
+                      <span className="text-sm font-medium">
+                        {Math.round(sub.finalScore ?? sub.aiScore!)}%
+                      </span>
                     )}
                     <StatusBadge
                       status={sub.status}
