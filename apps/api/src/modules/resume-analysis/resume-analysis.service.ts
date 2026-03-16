@@ -290,4 +290,111 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
       return { questions: [] };
     }
   }
+
+  async generateChallengesFromResume(resumeContext: {
+    seniorityLevel: string;
+    domains: string[];
+    totalYearsExp: number;
+  }): Promise<
+    Array<{
+      title: string;
+      description: string;
+      difficulty: string;
+      category: string;
+      referenceSolution: string;
+      solutionLanguage: string;
+    }>
+  > {
+    if (!this.apiKey) return [];
+
+    const { seniorityLevel, domains, totalYearsExp } = resumeContext;
+    const isMidOrAbove = ['mid', 'senior', 'staff'].includes(seniorityLevel);
+    const topDomains = domains.slice(0, 6);
+
+    const difficulty =
+      seniorityLevel === 'entry' || seniorityLevel === 'junior'
+        ? 'BEGINNER'
+        : seniorityLevel === 'mid'
+          ? 'INTERMEDIATE'
+          : 'ADVANCED';
+
+    const systemPrompt = `You are a technical challenge designer creating personalized coding challenges based on a candidate's resume.
+
+RESPONSE FORMAT (JSON only, no markdown):
+{
+  "challenges": [
+    {
+      "title": "Challenge title",
+      "description": "Detailed problem description with input/output examples",
+      "category": "GENERAL_SWE" or "DOMAIN_SPECIFIC",
+      "referenceSolution": "Complete working solution code",
+      "solutionLanguage": "python" or "javascript"
+    }
+  ]
+}
+
+RULES:
+- Generate exactly 4 challenges
+- First 2 should be GENERAL_SWE (algorithmic/data structure problems relevant to the candidate's domain)
+- Last 2 should be DOMAIN_SPECIFIC (practical problems using the candidate's actual tech stack)
+- Difficulty should match: ${difficulty} level (${seniorityLevel}, ${totalYearsExp} years)
+- Each description must include 2-3 example inputs and expected outputs
+- Reference solutions must be complete, runnable code
+- DOMAIN_SPECIFIC challenges should test real-world skills (e.g. "Build a REST endpoint", "Write a React hook", "Create a SQL query")
+- Output ONLY valid JSON`;
+
+    const userPrompt = `CANDIDATE PROFILE:
+- Seniority: ${seniorityLevel} (${totalYearsExp} years)
+- Tech domains: ${topDomains.join(', ')}
+${isMidOrAbove ? '- Include more complex, production-level scenarios' : '- Keep challenges approachable but meaningful'}
+
+Generate 4 personalized coding challenges for this candidate.`;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.5,
+          max_tokens: 4096,
+        }),
+      });
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      const jsonStr = content
+        .replace(/```json?\n?/g, '')
+        .replace(/```/g, '')
+        .trim();
+      const parsed = JSON.parse(jsonStr);
+
+      return (parsed.challenges || []).map(
+        (c: {
+          title: string;
+          description: string;
+          category?: string;
+          referenceSolution: string;
+          solutionLanguage?: string;
+        }) => ({
+          title: c.title,
+          description: c.description,
+          difficulty,
+          category: c.category || 'GENERAL_SWE',
+          referenceSolution: c.referenceSolution,
+          solutionLanguage: c.solutionLanguage || 'python',
+        })
+      );
+    } catch (error) {
+      this.logger.error(`Challenge generation from resume failed: ${error}`);
+      return [];
+    }
+  }
 }

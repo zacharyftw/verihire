@@ -20,10 +20,26 @@ function buildQuery(filters: ChallengeFilters) {
 }
 
 export function useChallenges(filters: ChallengeFilters = {}) {
-  return useSWR<{
-    items: Challenge[];
-    pagination: { total: number; page: number; totalPages: number };
+  const result = useSWR<{
+    data?: Challenge[];
+    items?: Challenge[];
+    meta?: { total: number; limit: number; offset: number; hasMore: boolean };
+    pagination?: { total: number; page: number; totalPages: number };
   }>(`/challenges${buildQuery(filters)}`);
+
+  // Normalize API response (API returns data/meta, frontend expects items/pagination)
+  const normalized = result.data
+    ? {
+        items: result.data.data || result.data.items || [],
+        pagination: result.data.pagination || {
+          total: result.data.meta?.total || 0,
+          page: Math.floor((result.data.meta?.offset || 0) / (result.data.meta?.limit || 20)) + 1,
+          totalPages: Math.ceil((result.data.meta?.total || 0) / (result.data.meta?.limit || 20)),
+        },
+      }
+    : undefined;
+
+  return { ...result, data: normalized };
 }
 
 export function useChallenge(id: string | undefined) {
