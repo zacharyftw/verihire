@@ -267,49 +267,95 @@ export class ChallengesService {
     });
   }
 
+  private static readonly DIFFICULTY_ORDER: ChallengeDifficulty[] = [
+    'BEGINNER',
+    'INTERMEDIATE',
+    'ADVANCED',
+    'EXPERT',
+  ];
+
+  private getNextDifficulty(
+    current: ChallengeDifficulty,
+    direction: -1 | 0 | 1
+  ): ChallengeDifficulty {
+    const idx = ChallengesService.DIFFICULTY_ORDER.indexOf(current);
+    const next = Math.max(
+      0,
+      Math.min(ChallengesService.DIFFICULTY_ORDER.length - 1, idx + direction)
+    );
+    return ChallengesService.DIFFICULTY_ORDER[next];
+  }
+
   async getRecommendedChallenges(candidateId: string, limit = 5) {
-    // Get candidate's skills
-    const candidateSkills = await prisma.candidateSkill.findMany({
-      where: { candidateId },
-      select: { skillId: true, level: true },
-    });
-
-    if (candidateSkills.length === 0) {
-      // Return beginner challenges if no skills
-      return prisma.challenge.findMany({
-        where: { difficulty: 'BEGINNER' },
-        include: {
-          skill: {
-            select: { id: true, name: true, slug: true },
-          },
-        },
-        take: limit,
-      });
-    }
-
-    // Get challenges for skills the candidate has, excluding completed ones
-    const completedChallenges = await prisma.submission.findMany({
-      where: {
-        candidateId,
-        status: 'EVALUATED',
-      },
+    // IDs of challenges the candidate has already completed (EVALUATED)
+    const completedSubmissions = await prisma.submission.findMany({
+      where: { candidateId, status: 'EVALUATED' },
       select: { challengeId: true },
     });
+    const completedIds = completedSubmissions.map(s => s.challengeId);
 
-    const completedIds = completedChallenges.map(s => s.challengeId);
+    // Most recent evaluated submission with its score and challenge metadata
+    const latestSubmission = await prisma.submission.findFirst({
+      where: { candidateId, status: 'EVALUATED' },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        finalScore: true,
+        challenge: {
+          select: { difficulty: true, domainTag: true },
+        },
+      },
+    });
+
+    if (latestSubmission?.challenge?.difficulty) {
+      const score = Number(latestSubmission.finalScore ?? 0);
+      const { difficulty, domainTag } = latestSubmission.challenge;
+
+      let direction: -1 | 0 | 1;
+      if (score >= 80) direction = 1;
+      else if (score >= 60) direction = 0;
+      else direction = -1;
+
+      const targetDifficulty = this.getNextDifficulty(difficulty as ChallengeDifficulty, direction);
+
+      const where: Prisma.ChallengeWhereInput = {
+        difficulty: targetDifficulty,
+        id: { notIn: completedIds },
+        ...(domainTag ? { domainTag } : {}),
+      };
+
+      const results = await prisma.challenge.findMany({
+        where,
+        include: {
+          skill: { select: { id: true, name: true, slug: true } },
+          _count: { select: { submissions: true } },
+        },
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (results.length > 0) return results;
+      // Fall through if no matches for domain+difficulty
+    }
+
+    // Fallback: recommend BEGINNER challenges matching resume domains
+    const profile = await prisma.candidateProfile.findFirst({
+      where: { id: candidateId },
+      select: { resumeDomains: true },
+    });
+
+    const resumeDomains = profile?.resumeDomains ?? [];
+
+    const where: Prisma.ChallengeWhereInput = {
+      difficulty: 'BEGINNER',
+      id: { notIn: completedIds },
+      ...(resumeDomains.length > 0 ? { domainTag: { in: resumeDomains } } : {}),
+    };
 
     return prisma.challenge.findMany({
-      where: {
-        skillId: { in: candidateSkills.map(cs => cs.skillId) },
-        id: { notIn: completedIds },
-      },
+      where,
       include: {
-        skill: {
-          select: { id: true, name: true, slug: true },
-        },
-        _count: {
-          select: { submissions: true },
-        },
+        skill: { select: { id: true, name: true, slug: true } },
+        _count: { select: { submissions: true } },
       },
       take: limit,
       orderBy: { createdAt: 'desc' },

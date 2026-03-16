@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   prisma,
+  Prisma,
   JobStatus,
   RemotePolicy,
   EmploymentType,
@@ -622,18 +623,30 @@ export class JobsService {
 
     const requiredSkillIds = jobSkills.filter(js => js.required).map(js => js.skillId);
 
-    // Find candidates with matching skills
+    // Find candidates with matching skills or domain scores
+    // First get all skill names for the job to match against domainScores
+    const jobSkillNames = jobSkills.map(js => js.skill.name);
+
     const candidates = await prisma.candidateProfile.findMany({
       where: {
-        candidateSkills: {
-          some: {
-            skillId: { in: jobSkills.map(js => js.skillId) },
+        OR: [
+          {
+            candidateSkills: {
+              some: {
+                skillId: { in: jobSkills.map(js => js.skillId) },
+              },
+            },
           },
-        },
+          // Also include candidates that might have domain scores but no explicit skill link
+          {
+            domainScores: { not: Prisma.DbNull },
+          },
+        ],
       },
       select: {
         id: true,
         yearsExperience: true,
+        domainScores: true,
         user: {
           select: {
             firstName: true,
@@ -653,15 +666,22 @@ export class JobsService {
           },
         },
       },
-      take: limit * 3, // Fetch more for ML scoring
+      take: limit * 3, // Fetch more for scoring
       skip: offset,
     });
 
-    return this.matchCandidatesRuleBased(jobSkills, candidates, requiredSkillIds, limit, offset);
+    return this.matchCandidatesRuleBased(
+      jobSkills,
+      candidates as any,
+      requiredSkillIds,
+      jobSkillNames,
+      limit,
+      offset
+    );
   }
 
   /**
-   * Rule-based candidate matching
+   * Rule-based candidate matching, enhanced with domain scores
    */
   private matchCandidatesRuleBased(
     jobSkills: Array<{
@@ -672,6 +692,7 @@ export class JobsService {
     }>,
     candidates: Array<{
       id: string;
+      domainScores: unknown;
       user: { firstName: string | null; lastName: string | null; avatarUrl: string | null };
       candidateSkills: Array<{
         skillId: string;
@@ -681,29 +702,75 @@ export class JobsService {
       }>;
     }>,
     requiredSkillIds: string[],
+    jobSkillNames: string[],
     limit: number,
     offset: number
   ) {
-    // Score candidates based on skill match
+    // Score candidates based on skill match + domain scores
     const scoredCandidates = candidates.map(candidate => {
       let matchScore = 0;
       let matchedSkills = 0;
       let missingRequired = 0;
+
+      // Parse domain scores from JSON
+      const domains = (candidate.domainScores ?? {}) as Record<
+        string,
+        { score: number; count: number; level: string; maxDifficulty: string }
+      >;
+
+      // Build a lowercase lookup map for domain scores
+      const domainLookup = new Map<
+        string,
+        { score: number; count: number; level: string; maxDifficulty: string }
+      >();
+      for (const [key, value] of Object.entries(domains)) {
+        domainLookup.set(key.toLowerCase(), value);
+      }
+
+      // Track which job skills are matched by domain scores
+      const domainMatches: Array<{
+        skillName: string;
+        domainScore: number;
+        domainLevel: string;
+      }> = [];
+      let domainMatchedCount = 0;
 
       for (const jobSkill of jobSkills) {
         const candidateSkill = candidate.candidateSkills.find(
           cs => cs.skillId === jobSkill.skillId
         );
 
-        if (candidateSkill) {
+        // Check domain scores for this skill (match by skill name)
+        const domainEntry = domainLookup.get(jobSkill.skill.name.toLowerCase());
+
+        if (candidateSkill || domainEntry) {
           matchedSkills++;
-          // Use the skill score if available, otherwise default based on verification
-          const skillScore = candidateSkill.score
-            ? Number(candidateSkill.score)
-            : candidateSkill.verified
-              ? 70
-              : 50;
-          const scoreRatio = Math.min(skillScore / (jobSkill.minScore || 60), 1.5);
+
+          // Determine best score from either source
+          let bestScore = 0;
+
+          if (candidateSkill) {
+            bestScore = candidateSkill.score
+              ? Number(candidateSkill.score)
+              : candidateSkill.verified
+                ? 70
+                : 50;
+          }
+
+          if (domainEntry && domainEntry.score > bestScore) {
+            bestScore = domainEntry.score;
+          }
+
+          if (domainEntry) {
+            domainMatchedCount++;
+            domainMatches.push({
+              skillName: jobSkill.skill.name,
+              domainScore: domainEntry.score,
+              domainLevel: domainEntry.level,
+            });
+          }
+
+          const scoreRatio = Math.min(bestScore / (jobSkill.minScore || 60), 1.5);
           matchScore += scoreRatio * (jobSkill.required ? 2 : 1);
         } else if (jobSkill.required) {
           missingRequired++;
@@ -715,12 +782,21 @@ export class JobsService {
         matchScore -= missingRequired * 2;
       }
 
+      // Calculate domain match percentage
+      const domainMatchPercentage =
+        jobSkillNames.length > 0
+          ? Math.round((domainMatchedCount / jobSkillNames.length) * 100)
+          : 0;
+
       return {
         ...candidate,
+        domainScores: domains,
         matchScore: Math.round(matchScore * 10) / 10,
         matchedSkillsCount: matchedSkills,
         totalRequiredSkills: requiredSkillIds.length,
         hasAllRequired: missingRequired === 0,
+        domainMatchPercentage,
+        domainMatches,
         mlPowered: false,
       };
     });

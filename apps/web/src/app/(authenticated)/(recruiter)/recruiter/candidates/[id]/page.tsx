@@ -2,13 +2,15 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Briefcase, Globe, Award, ExternalLink } from 'lucide-react';
+import { ArrowLeft, MapPin, Briefcase, Globe, Award, ExternalLink, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
-import { ROUTES } from '@/lib/constants';
+import { ROUTES, DIFFICULTY_LABELS } from '@/lib/constants';
+import { useDomainScores, type DomainScore } from '@/hooks/use-candidate';
 import useSWR from 'swr';
 
 interface CandidateDetail {
@@ -39,6 +41,7 @@ export default function CandidateDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { data: candidate, isLoading } = useSWR<CandidateDetail>(`/candidates/${id}/profile`);
+  const { data: domainScoresData } = useDomainScores(id);
 
   if (isLoading) return <PageLoader />;
   if (!candidate) return <div>Candidate not found</div>;
@@ -139,6 +142,42 @@ export default function CandidateDetailPage() {
                       )}
                     </Badge>
                   ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {domainScoresData?.domains && Object.keys(domainScoresData.domains).length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <h3 className="mb-2 flex items-center gap-2 font-medium">
+                  <BarChart3 className="h-4 w-4" />
+                  Verified Domain Scores
+                </h3>
+                <div className="space-y-3">
+                  {Object.entries(domainScoresData.domains)
+                    .sort(([, a], [, b]) => (b as DomainScore).score - (a as DomainScore).score)
+                    .map(([name, domain]) => {
+                      const d = domain as DomainScore;
+                      return (
+                        <div key={name} className="rounded-lg border p-3">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-sm font-medium">{name}</span>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {DIFFICULTY_LABELS[d.level] || d.level}
+                              </Badge>
+                              <span className="text-sm font-semibold">{Math.round(d.score)}%</span>
+                            </div>
+                          </div>
+                          <Progress value={d.score} className="h-2" />
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {d.count} challenge{d.count !== 1 ? 's' : ''} completed
+                          </p>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             </>

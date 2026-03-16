@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Sparkles, UserPlus } from 'lucide-react';
+import { ArrowLeft, Sparkles, UserPlus, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,27 +14,37 @@ import { ROUTES } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
+interface DomainMatch {
+  skillName: string;
+  domainScore: number;
+  domainLevel: string;
+}
+
 interface MatchedCandidate {
-  candidateId: string;
-  score: number;
-  candidate?: {
-    id: string;
-    user?: { firstName: string; lastName: string };
-    headline?: string;
-    currentRole?: string;
-    currentCompany?: string;
-    locationCity?: string;
-    yearsExperience?: number;
-    skills?: Array<{ skillId: string; skill?: { name: string } }>;
-  };
+  id: string;
+  matchScore: number;
+  matchedSkillsCount: number;
+  totalRequiredSkills: number;
+  hasAllRequired: boolean;
+  domainMatchPercentage: number;
+  domainMatches: DomainMatch[];
+  user?: { firstName: string; lastName: string };
+  currentRole?: string;
+  currentCompany?: string;
+  locationCity?: string;
+  yearsExperience?: number;
+  candidateSkills?: Array<{ skillId: string; skill?: { name: string } }>;
 }
 
 export default function MatchesPage() {
   const params = useParams();
   const jobId = params.id as string;
   const { data: job } = useJob(jobId);
-  const { data, isLoading } = useMatchingCandidates(jobId);
-  const matches: MatchedCandidate[] = (data?.matches || data || []) as MatchedCandidate[];
+  const { data: rawData, isLoading } = useMatchingCandidates(jobId);
+  const matches: MatchedCandidate[] = (rawData?.data ||
+    rawData?.matches ||
+    rawData ||
+    []) as MatchedCandidate[];
   const [adding, setAdding] = useState<string | null>(null);
 
   async function handleAdd(candidateId: string) {
@@ -42,7 +52,7 @@ export default function MatchesPage() {
     try {
       await addToShortlist(jobId, candidateId);
       toast({ title: 'Added to shortlist' });
-    } catch (err) {
+    } catch (err: unknown) {
       toast({
         title: 'Failed to add',
         variant: 'destructive',
@@ -80,59 +90,84 @@ export default function MatchesPage() {
         />
       ) : (
         <div className="space-y-3">
-          {matches.map(match => (
-            <Card key={match.candidateId}>
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                  <span className="text-lg font-bold text-primary">{Math.round(match.score)}%</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={ROUTES.candidateProfile(match.candidateId)}
-                      className="font-medium hover:underline"
-                    >
-                      {match.candidate?.user
-                        ? `${match.candidate.user.firstName} ${match.candidate.user.lastName}`
-                        : 'Unknown'}
-                    </Link>
+          {matches.map(match => {
+            const normalizedScore = Math.min(
+              100,
+              Math.round((match.matchScore / (match.totalRequiredSkills * 2 || 1)) * 100)
+            );
+            return (
+              <Card key={match.id}>
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    <span className="text-lg font-bold text-primary">{normalizedScore}%</span>
                   </div>
-                  {match.candidate?.currentRole && (
-                    <p className="text-sm text-muted-foreground">
-                      {match.candidate.currentRole}
-                      {match.candidate.currentCompany && ` at ${match.candidate.currentCompany}`}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={ROUTES.candidateProfile(match.id)}
+                        className="font-medium hover:underline"
+                      >
+                        {match.user ? `${match.user.firstName} ${match.user.lastName}` : 'Unknown'}
+                      </Link>
+                      {match.hasAllRequired && (
+                        <Badge variant="default" className="text-xs">
+                          All required
+                        </Badge>
+                      )}
+                    </div>
+                    {match.currentRole && (
+                      <p className="text-sm text-muted-foreground">
+                        {match.currentRole}
+                        {match.currentCompany && ` at ${match.currentCompany}`}
+                      </p>
+                    )}
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {match.locationCity && (
+                        <Badge variant="outline" className="text-xs">
+                          {match.locationCity}
+                        </Badge>
+                      )}
+                      {match.yearsExperience != null && (
+                        <Badge variant="outline" className="text-xs">
+                          {match.yearsExperience}y exp
+                        </Badge>
+                      )}
+                      {match.candidateSkills?.slice(0, 3).map(s => (
+                        <Badge key={s.skillId} variant="secondary" className="text-xs">
+                          {s.skill?.name || s.skillId}
+                        </Badge>
+                      ))}
+                    </div>
+                    {match.domainMatches && match.domainMatches.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <BarChart3 className="h-3 w-3 text-muted-foreground" />
+                        {match.domainMatches.map(dm => (
+                          <Badge key={dm.skillName} variant="outline" className="text-xs">
+                            {dm.skillName}: {Math.round(dm.domainScore)}%
+                          </Badge>
+                        ))}
+                        <span className="text-xs text-muted-foreground">
+                          ({match.domainMatchPercentage}% domain match)
+                        </span>
+                      </div>
+                    )}
+                    <Progress value={normalizedScore} className="mt-2 h-1.5" />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {match.matchedSkillsCount}/{match.totalRequiredSkills} required skills matched
                     </p>
-                  )}
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {match.candidate?.locationCity && (
-                      <Badge variant="outline" className="text-xs">
-                        {match.candidate.locationCity}
-                      </Badge>
-                    )}
-                    {match.candidate?.yearsExperience != null && (
-                      <Badge variant="outline" className="text-xs">
-                        {match.candidate.yearsExperience}y exp
-                      </Badge>
-                    )}
-                    {match.candidate?.skills?.slice(0, 3).map(s => (
-                      <Badge key={s.skillId} variant="secondary" className="text-xs">
-                        {s.skill?.name || s.skillId}
-                      </Badge>
-                    ))}
                   </div>
-                  <Progress value={match.score} className="mt-2 h-1.5" />
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => handleAdd(match.candidateId)}
-                  disabled={adding === match.candidateId}
-                >
-                  <UserPlus className="mr-1 h-4 w-4" />
-                  Shortlist
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  <Button
+                    size="sm"
+                    onClick={() => handleAdd(match.id)}
+                    disabled={adding === match.id}
+                  >
+                    <UserPlus className="mr-1 h-4 w-4" />
+                    Shortlist
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
