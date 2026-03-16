@@ -803,4 +803,48 @@ export class CandidatesService {
       domains: profile.domainScores || {},
     };
   }
+
+  async getInterviewQuestions(candidateId: string, domain: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: {
+        resumeSeniorityLevel: true,
+        resumeDomains: true,
+        resumeYearsExp: true,
+        resumeAnalyzedAt: true,
+        domainScores: true,
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    if (!profile.resumeAnalyzedAt) {
+      throw new BadRequestException('Candidate has no resume analysis yet');
+    }
+
+    const seniorityLevel = profile.resumeSeniorityLevel || 'mid';
+    const domains = (profile.resumeDomains as string[]) || [];
+    const totalYearsExp = profile.resumeYearsExp ?? 0;
+
+    // Pull domain-specific score if available
+    const domainScores = (profile.domainScores as Record<string, unknown>) || {};
+    const domainScore = domainScores[domain];
+    const scoreContext = domainScore
+      ? ` (candidate scored ${JSON.stringify(domainScore)} in ${domain})`
+      : '';
+
+    const questions = await this.resumeAnalysisService.generateCandidateQuestions({
+      challengeTitle: domain,
+      challengeDescription: `Interview questions for a ${seniorityLevel} ${domain} developer with ${totalYearsExp} years experience${scoreContext}`,
+      resumeContext: {
+        seniorityLevel,
+        domains,
+        totalYearsExp,
+      },
+    });
+
+    return questions;
+  }
 }

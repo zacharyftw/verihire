@@ -26,9 +26,11 @@ interface DisagreementAnalysis {
 export class ScoreAggregationService {
   private readonly logger = new Logger(ScoreAggregationService.name);
 
-  // Configuration
-  private readonly baseAiWeight = 0.6; // AI gets 60% base weight
-  private readonly basePeerWeight = 0.4; // Peers get 40% base weight
+  // Configuration — peer review is optional and non-blocking.
+  // Certificates and domain scores use aiScore directly; this blend
+  // only sets the submission's finalScore for informational purposes.
+  private readonly baseAiWeight = 0.7; // AI gets 70% base weight
+  private readonly basePeerWeight = 0.3; // Peers get 30% base weight
   private readonly minPeerReviewsForFullWeight = 3;
   private readonly disagreementThreshold = 15; // Points difference to flag
   private readonly peerDisagreementThreshold = 20; // Between peer reviewers

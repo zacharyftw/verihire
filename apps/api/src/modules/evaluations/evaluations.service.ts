@@ -966,7 +966,7 @@ export class EvaluationsService {
         content: { not: null },
       },
       select: { id: true, content: true },
-      take: 100,
+      take: 500,
       orderBy: { submittedAt: 'desc' },
     });
 
@@ -983,7 +983,7 @@ export class EvaluationsService {
       }
     }
 
-    const flagged = maxSimilarity >= 0.85;
+    const flagged = maxSimilarity >= 0.7;
     if (flagged) {
       this.logger.warn(
         `Plagiarism flagged for ${submissionId}: ${Math.round(maxSimilarity * 100)}% similar to ${similarSubmissionId}`
@@ -1004,12 +1004,15 @@ export class EvaluationsService {
       .replace(/\/\*[\s\S]*?\*\//g, '') // multi-line comments
       .replace(/"""[\s\S]*?"""/g, '') // Python docstrings
       .replace(/'''[\s\S]*?'''/g, '') // Python docstrings
+      .replace(/"(?:[^"\\]|\\.)*"/g, '') // double-quoted string literals
+      .replace(/'(?:[^'\\]|\\.)*'/g, '') // single-quoted string literals
+      .replace(/`(?:[^`\\]|\\.)*`/g, '') // template literals
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
   }
 
-  private getCharNgrams(text: string, n = 5): Set<string> {
+  private getCharNgrams(text: string, n = 10): Set<string> {
     const ngrams = new Set<string>();
     for (let i = 0; i <= text.length - n; i++) {
       ngrams.add(text.slice(i, i + n));

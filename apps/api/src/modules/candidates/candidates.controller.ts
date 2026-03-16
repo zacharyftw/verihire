@@ -377,4 +377,24 @@ export class CandidatesController {
   async getDomainScores(@Param('id') id: string) {
     return this.candidatesService.getDomainScores(id);
   }
+
+  @Get(':id/interview-questions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get AI-generated interview questions for a candidate' })
+  @ApiQuery({
+    name: 'domain',
+    required: true,
+    type: String,
+    description: 'Domain to generate questions for (e.g. React, Node.js)',
+  })
+  @ApiResponse({ status: 200, description: 'Generated interview questions' })
+  @ApiResponse({ status: 400, description: 'Missing domain or no resume analysis' })
+  @ApiResponse({ status: 404, description: 'Candidate not found' })
+  async getInterviewQuestions(@Param('id') id: string, @Query('domain') domain: string) {
+    if (!domain) {
+      throw new BadRequestException('domain query parameter is required');
+    }
+    return this.candidatesService.getInterviewQuestions(id, domain);
+  }
 }
