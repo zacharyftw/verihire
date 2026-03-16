@@ -584,8 +584,9 @@ export class CandidatesService {
       throw new BadRequestException('No resume to delete');
     }
 
-    // Extract key from URL
-    const key = profile.resumeUrl.split('/').slice(-3).join('/');
+    // Extract key from URL — everything after the bucket name in the path
+    const match = profile.resumeUrl.match(/\/verihire\/(.+)$/);
+    const key = match ? match[1] : profile.resumeUrl.split('/').slice(-4).join('/');
 
     // Delete from storage
     await this.storageService.deleteFile(key);
@@ -593,7 +594,14 @@ export class CandidatesService {
     // Update profile
     await prisma.candidateProfile.update({
       where: { id: candidateId },
-      data: { resumeUrl: null },
+      data: {
+        resumeUrl: null,
+        resumeText: null,
+        resumeSeniorityLevel: null,
+        resumeDomains: [],
+        resumeYearsExp: null,
+        resumeAnalyzedAt: null,
+      },
     });
 
     return { success: true };
