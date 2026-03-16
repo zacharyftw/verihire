@@ -7,6 +7,8 @@ import { Toaster } from '@/components/ui/toaster';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'VeriHire - AI-Powered Skill Certification',
   description: 'Verify your skills with AI-powered assessments and blockchain-backed certificates',
