@@ -362,25 +362,78 @@ export class EvaluationsService {
       // 12. Update challenge stats
       await this.updateChallengeStats(submission.challengeId, overallScore);
 
-      // 13. Generate certificate if passing
-      const passed = this.certificateService.isPassing(overallScore);
-      let certificate: GeneratedCertificate | null = null;
+      // 13. Recalculate domain scores for this candidate
+      const domainScores = await this.recalculateDomainScores(submission.candidateId);
 
-      if (passed && submission.challenge.skillId) {
-        certificate = await this.certificateService.generateCertificate({
-          candidateId: submission.candidateId,
-          skillId: submission.challenge.skillId,
-          challengeId: submission.challengeId,
-          submissionId: submission.id,
-          finalScore: overallScore,
-          aiScore: overallScore,
-          criteriaScores,
-          confidence,
-        });
+      // 14. Check if any domain now qualifies for a domain certificate
+      let certificate: GeneratedCertificate | null = null;
+      const challengeDomain = submission.challenge.domainTag;
+
+      if (challengeDomain && domainScores[challengeDomain]) {
+        const ds = domainScores[challengeDomain];
+        // Domain certificate criteria: ≥3 challenges + score ≥70 + attempted INTERMEDIATE+
+        const diffWeight: Record<string, number> = {
+          BEGINNER: 1,
+          INTERMEDIATE: 2,
+          ADVANCED: 3,
+          EXPERT: 4,
+        };
+        const maxDiffWeight = diffWeight[ds.maxDifficulty] || 1;
+        const qualifies = ds.count >= 3 && ds.score >= 70 && maxDiffWeight >= 2;
+
+        if (qualifies) {
+          // Check if domain certificate already exists for this candidate + domain
+          const existingDomainCert = await prisma.certificate.findFirst({
+            where: {
+              candidateId: submission.candidateId,
+              metadata: { path: ['domainTag'], equals: challengeDomain },
+            },
+          });
+
+          if (!existingDomainCert) {
+            certificate = await this.certificateService.generateCertificate({
+              candidateId: submission.candidateId,
+              skillId: submission.challenge.skillId || submission.challengeId,
+              challengeId: submission.challengeId,
+              submissionId: submission.id,
+              finalScore: Math.round(ds.score),
+              aiScore: Math.round(ds.score),
+              criteriaScores: {
+                domain_score: { score: Math.round(ds.score), maxScore: 100 },
+                challenges_completed: { score: ds.count, maxScore: 10 },
+              },
+              confidence,
+              domainTag: challengeDomain,
+              domainLevel: ds.level,
+            });
+            this.logger.log(
+              `Domain certificate issued for ${challengeDomain}: ${ds.level} (score: ${ds.score}, ${ds.count} challenges)`
+            );
+          } else {
+            // Update existing domain certificate if score improved
+            if (ds.score > Number(existingDomainCert.finalScore)) {
+              await prisma.certificate.update({
+                where: { id: existingDomainCert.id },
+                data: {
+                  finalScore: Math.round(ds.score),
+                  metadata: {
+                    ...((existingDomainCert.metadata as any) || {}),
+                    domainTag: challengeDomain,
+                    domainLevel: ds.level,
+                    challengesCompleted: ds.count,
+                    lastUpdated: new Date().toISOString(),
+                  },
+                },
+              });
+              this.logger.log(
+                `Domain certificate updated for ${challengeDomain}: ${ds.level} (score: ${ds.score})`
+              );
+            }
+          }
+        }
       }
 
-      // 14. Recalculate domain scores for this candidate
-      await this.recalculateDomainScores(submission.candidateId);
+      const passed = overallScore >= 70;
 
       this.logger.log(
         `Evaluation complete for ${submissionId}: score=${overallScore}, passed=${passed}, type=${challengeType}`
@@ -885,7 +938,11 @@ export class EvaluationsService {
    * Formula: domainScore = Σ(challengeScore × difficultyWeight) / Σ(difficultyWeight)
    * Weights: BEGINNER=1, INTERMEDIATE=2, ADVANCED=3, EXPERT=4
    */
-  private async recalculateDomainScores(candidateId: string) {
+  private async recalculateDomainScores(
+    candidateId: string
+  ): Promise<
+    Record<string, { score: number; count: number; level: string; maxDifficulty: string }>
+  > {
     try {
       // Get all evaluated submissions for this candidate with their challenge details
       const submissions = await prisma.submission.findMany({
@@ -977,8 +1034,11 @@ export class EvaluationsService {
           .map(([d, s]) => `${d}=${s.score}% (${s.level})`)
           .join(', ')}`
       );
+
+      return domainScores;
     } catch (error) {
       this.logger.error(`Failed to recalculate domain scores: ${error}`);
+      return {};
     }
   }
 
