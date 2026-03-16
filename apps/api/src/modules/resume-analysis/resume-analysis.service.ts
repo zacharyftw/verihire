@@ -334,9 +334,9 @@ RESPONSE FORMAT (JSON only, no markdown):
 }
 
 RULES:
-- Generate exactly 4 challenges
-- First 2 should be GENERAL_SWE (algorithmic/data structure problems relevant to the candidate's domain)
-- Last 2 should be DOMAIN_SPECIFIC (practical problems using the candidate's actual tech stack)
+- Generate exactly 8 challenges
+- First 4 should be GENERAL_SWE (algorithmic/data structure problems relevant to the candidate's domain)
+- Last 4 should be DOMAIN_SPECIFIC (practical problems using the candidate's actual tech stack)
 - Difficulty should match: ${difficulty} level (${seniorityLevel}, ${totalYearsExp} years)
 - Each description must include 2-3 example inputs and expected outputs
 - Reference solutions must be complete, runnable code
@@ -348,7 +348,7 @@ RULES:
 - Tech domains: ${topDomains.join(', ')}
 ${isMidOrAbove ? '- Include more complex, production-level scenarios' : '- Keep challenges approachable but meaningful'}
 
-Generate 4 personalized coding challenges for this candidate.`;
+Generate 8 personalized coding challenges for this candidate.`;
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
