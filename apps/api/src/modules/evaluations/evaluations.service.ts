@@ -154,12 +154,27 @@ export class EvaluationsService {
         // invalidation is needed in the future, add a `testCasesCachedAt` DateTime
         // field to the Challenge model and check it here before using the cache.
         const cachedRaw = submission.challenge.cachedTestCases;
-        const cachedTestCases = Array.isArray(cachedRaw)
-          ? (cachedRaw as unknown as GeneratedTestCase[])
-          : null;
+        let cachedTestCases: GeneratedTestCase[] | null = null;
+
+        if (Array.isArray(cachedRaw) && cachedRaw.length > 0) {
+          // Validate that cached test cases have required fields
+          const isValid = cachedRaw.every(
+            (tc: any) =>
+              tc &&
+              typeof tc.input === 'string' &&
+              typeof tc.expectedOutput === 'string' &&
+              typeof tc.category === 'string' &&
+              typeof tc.description === 'string'
+          );
+          if (isValid) {
+            cachedTestCases = cachedRaw as unknown as GeneratedTestCase[];
+          } else {
+            this.logger.warn('Cached test cases are corrupted, regenerating...');
+          }
+        }
         let generatedTestCases: GeneratedTestCase[] = [];
 
-        if (cachedTestCases && Array.isArray(cachedTestCases) && cachedTestCases.length > 0) {
+        if (cachedTestCases && cachedTestCases.length > 0) {
           generatedTestCases = cachedTestCases;
           this.logger.log(`Using ${generatedTestCases.length} cached test cases for challenge`);
         } else {
@@ -338,7 +353,7 @@ export class EvaluationsService {
           if (allTestCases.length > 0) {
             overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
           } else {
-            overallScore = 0;
+            overallScore = Math.round(codeQualityScore * 0.5); // Lower confidence without test cases
           }
 
           criteriaScores = {
@@ -476,6 +491,8 @@ export class EvaluationsService {
             }
           }
         }
+      } else if (!challengeDomain) {
+        this.logger.log(`Skipping domain certificate check — challenge has no domainTag`);
       }
 
       const passed = overallScore >= 70;
@@ -727,9 +744,24 @@ export class EvaluationsService {
 
     // Same cache-invalidation caveat as evaluateSubmission — see comment there.
     const cachedRaw = submission.challenge.cachedTestCases;
-    const cachedTestCases = Array.isArray(cachedRaw)
-      ? (cachedRaw as unknown as GeneratedTestCase[])
-      : null;
+    let cachedTestCases: GeneratedTestCase[] | null = null;
+
+    if (Array.isArray(cachedRaw) && cachedRaw.length > 0) {
+      // Validate that cached test cases have required fields
+      const isValid = cachedRaw.every(
+        (tc: any) =>
+          tc &&
+          typeof tc.input === 'string' &&
+          typeof tc.expectedOutput === 'string' &&
+          typeof tc.category === 'string' &&
+          typeof tc.description === 'string'
+      );
+      if (isValid) {
+        cachedTestCases = cachedRaw as unknown as GeneratedTestCase[];
+      } else {
+        this.logger.warn('Cached test cases are corrupted, regenerating...');
+      }
+    }
     let generatedTestCases: GeneratedTestCase[] = [];
 
     if (cachedTestCases && cachedTestCases.length > 0) {
@@ -1069,7 +1101,8 @@ export class EvaluationsService {
       > = {};
 
       for (const sub of submissions) {
-        const domain = sub.challenge.domainTag || 'General';
+        if (!sub.challenge.domainTag) continue;
+        const domain = sub.challenge.domainTag;
         const difficulty = sub.challenge.difficulty || 'BEGINNER';
         const weight = difficultyWeights[difficulty] || 1;
         const score = Number(sub.aiScore) || 0;
