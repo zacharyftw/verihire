@@ -352,7 +352,7 @@ CRITICAL RULES:
   * If they know Prisma: "Write a recursive category tree query with Prisma"
   * If they know Rust: "Implement a thread-safe LRU cache"
   * If they know Docker: "Write a multi-stage Dockerfile for a Node.js monorepo"
-- solutionLanguage MUST be "python", "javascript", or "typescript" ONLY — never "sql", "rust", "go", etc. (the sandbox only supports these 3). For domain challenges about other tech, write the solution in one of these 3 languages
+- solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash" — pick the language most relevant to the candidate's domain for each challenge
 - Reference solutions must be COMPLETE, RUNNABLE, self-contained code (no external dependencies, no imports from frameworks)
 - Each description must clearly state input format, output format, and 2-3 examples
 - Output ONLY valid JSON`;
@@ -390,7 +390,22 @@ Generate 8 unique, personalized coding challenges. Make the DOMAIN_SPECIFIC ones
         .trim();
       const parsed = JSON.parse(jsonStr);
 
-      const validLanguages = ['python', 'javascript', 'typescript'];
+      const validLanguages = [
+        'python',
+        'javascript',
+        'typescript',
+        'java',
+        'cpp',
+        'csharp',
+        'go',
+        'rust',
+        'ruby',
+        'php',
+        'kotlin',
+        'swift',
+        'scala',
+        'bash',
+      ];
 
       return (parsed.challenges || []).map(
         (c: {
