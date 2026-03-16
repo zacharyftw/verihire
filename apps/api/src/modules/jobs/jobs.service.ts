@@ -770,7 +770,7 @@ export class JobsService {
             });
           }
 
-          const scoreRatio = Math.min(bestScore / (jobSkill.minScore || 60), 1.5);
+          const scoreRatio = bestScore / (jobSkill.minScore || 60);
           matchScore += scoreRatio * (jobSkill.required ? 2 : 1);
         } else if (jobSkill.required) {
           missingRequired++;
