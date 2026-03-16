@@ -100,11 +100,13 @@ export class ChallengesService {
       throw new NotFoundException('Challenge not found');
     }
 
-    // If the reference solution is being changed, invalidate cached test cases
-    // so they are regenerated (and re-validated) on the next evaluation.
+    // If the reference solution or description is being changed, invalidate cached
+    // test cases so they are regenerated (and re-validated) on the next evaluation.
+    // Description changes matter because test cases are generated from the description.
     const invalidateCache =
-      data.referenceSolution !== undefined &&
-      data.referenceSolution !== challenge.referenceSolution;
+      (data.referenceSolution !== undefined &&
+        data.referenceSolution !== challenge.referenceSolution) ||
+      (data.description !== undefined && data.description !== challenge.description);
 
     const updated = await prisma.challenge.update({
       where: { id },
@@ -115,8 +117,18 @@ export class ChallengesService {
     });
 
     if (invalidateCache) {
+      const reasons: string[] = [];
+      if (
+        data.referenceSolution !== undefined &&
+        data.referenceSolution !== challenge.referenceSolution
+      ) {
+        reasons.push('referenceSolution');
+      }
+      if (data.description !== undefined && data.description !== challenge.description) {
+        reasons.push('description');
+      }
       this.logger.log(
-        `Invalidated cached test cases for challenge ${id} due to referenceSolution change`
+        `Invalidated cached test cases for challenge ${id} due to ${reasons.join(' and ')} change`
       );
     }
 
@@ -351,7 +363,7 @@ export class ChallengesService {
       ...(resumeDomains.length > 0 ? { domainTag: { in: resumeDomains } } : {}),
     };
 
-    return prisma.challenge.findMany({
+    let challenges = await prisma.challenge.findMany({
       where,
       include: {
         skill: { select: { id: true, name: true, slug: true } },
@@ -360,5 +372,23 @@ export class ChallengesService {
       take: limit,
       orderBy: { createdAt: 'desc' },
     });
+
+    // Final fallback: if no resume domains, return any BEGINNER challenges
+    if (challenges.length === 0) {
+      challenges = await prisma.challenge.findMany({
+        where: {
+          id: { notIn: completedIds },
+          difficulty: 'BEGINNER',
+        },
+        include: {
+          skill: { select: { id: true, name: true, slug: true } },
+          _count: { select: { submissions: true } },
+        },
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    return challenges;
   }
 }

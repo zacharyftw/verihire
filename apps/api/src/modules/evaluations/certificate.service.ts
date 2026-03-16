@@ -289,21 +289,18 @@ export class CertificateService {
   }
 
   private async calculatePercentile(skillId: string, score: number): Promise<number> {
-    // Count how many submissions for this skill scored lower
-    const totalCount = await prisma.certificate.count({
-      where: { skillId },
-    });
+    // Calculate percentile against ALL evaluated submissions for this skill,
+    // not just certified ones, to avoid inflated percentiles.
+    const [lowerCount, totalCount] = await Promise.all([
+      prisma.submission.count({
+        where: { challenge: { skillId }, status: 'EVALUATED', aiScore: { lt: score } },
+      }),
+      prisma.submission.count({
+        where: { challenge: { skillId }, status: 'EVALUATED' },
+      }),
+    ]);
 
-    if (totalCount === 0) {
-      return 100; // First certificate gets 100th percentile
-    }
-
-    const lowerCount = await prisma.certificate.count({
-      where: {
-        skillId,
-        finalScore: { lt: score },
-      },
-    });
+    if (totalCount === 0) return 100;
 
     return Math.round((lowerCount / totalCount) * 100);
   }

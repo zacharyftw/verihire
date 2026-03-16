@@ -287,16 +287,16 @@ export class CandidatesService {
       where: {
         candidateId,
         status: 'EVALUATED',
-        finalScore: { not: null },
+        aiScore: { not: null },
       },
-      _avg: { finalScore: true },
+      _avg: { aiScore: true },
     });
 
     return {
       submissions: submissionStats,
       certificates,
       verifiedSkills,
-      averageScore: avgScore._avg.finalScore,
+      averageScore: avgScore._avg.aiScore,
     };
   }
 

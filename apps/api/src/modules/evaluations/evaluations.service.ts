@@ -1172,21 +1172,17 @@ export class EvaluationsService {
     }
   }
 
-  private async updateChallengeStats(challengeId: string, score: number) {
-    const challenge = await prisma.challenge.findUnique({
-      where: { id: challengeId },
-      select: { averageScore: true, timesAttempted: true },
+  private async updateChallengeStats(challengeId: string, _score: number) {
+    // Recompute the average from all evaluations to avoid race conditions
+    // with concurrent evaluations that could corrupt a read-modify-write cycle.
+    const avg = await prisma.evaluation.aggregate({
+      where: { submission: { challengeId } },
+      _avg: { overallScore: true },
     });
-
-    if (!challenge) return;
-
-    const currentAvg = challenge.averageScore ? Number(challenge.averageScore) : 0;
-    const attempts = challenge.timesAttempted || 1;
-    const newAvg = (currentAvg * (attempts - 1) + score) / attempts;
 
     await prisma.challenge.update({
       where: { id: challengeId },
-      data: { averageScore: newAvg },
+      data: { averageScore: avg._avg.overallScore || 0 },
     });
   }
 
