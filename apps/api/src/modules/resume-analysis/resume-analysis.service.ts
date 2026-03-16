@@ -181,7 +181,10 @@ RULES:
     if (!str) return null;
     const match = str.match(/^(\d{4})-(\d{2})$/);
     if (!match) return null;
-    return new Date(parseInt(match[1]), parseInt(match[2]) - 1, 1);
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    if (month < 1 || month > 12) return null;
+    return new Date(year, month - 1, 1);
   }
 
   private determineSeniority(

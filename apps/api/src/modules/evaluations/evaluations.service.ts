@@ -213,6 +213,7 @@ export class EvaluationsService {
 
               const validatedTestCases: GeneratedTestCase[] = [];
               for (let i = 0; i < generatedTestCases.length; i++) {
+                if (i >= refResults.results.length) break; // bounds check
                 const refResult = refResults.results[i];
                 if (refResult && refResult.actualOutput != null && !refResult.error) {
                   validatedTestCases.push({
@@ -793,6 +794,7 @@ export class EvaluationsService {
             })),
           });
           generatedTestCases = generatedTestCases.filter((tc, i) => {
+            if (i >= refResults.results.length) return false; // bounds check
             const r = refResults.results[i];
             if (r && r.actualOutput != null && !r.error) {
               tc.expectedOutput = r.actualOutput;
