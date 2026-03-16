@@ -30,3 +30,24 @@ export function addCandidateSkill(data: { skillId: string; level?: string }) {
 export function removeCandidateSkill(skillId: string) {
   return api.delete(`/candidates/me/skills/${skillId}`);
 }
+
+export function uploadResume(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.upload<{ url: string; key: string }>('/candidates/me/resume', formData);
+}
+
+export function deleteResume() {
+  return api.delete('/candidates/me/resume');
+}
+
+export function useResumeAnalysis(candidateId: string | undefined) {
+  return useSWR<{
+    analyzed: boolean;
+    analyzedAt: string | null;
+    seniorityLevel: string | null;
+    domains: string[];
+    yearsExperience: number | null;
+    hasResume: boolean;
+  }>(candidateId ? `/candidates/${candidateId}/resume-analysis` : null);
+}
