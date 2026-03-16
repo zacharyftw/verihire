@@ -628,18 +628,45 @@ export class ReviewsService {
     );
 
     if (allCompleted && reviews.length > 0) {
-      // Calculate and store aggregated scores
+      // Calculate aggregated peer score
       const aggregated = await this.getAggregatedScore(submissionId);
+
+      // Fetch the submission to get the original aiScore
+      const submission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { aiScore: true, candidateId: true },
+      });
+
+      const aiScore = submission?.aiScore ? Number(submission.aiScore) : null;
+      const peerScore = aggregated.peerScore;
+
+      // Blend: aiScore * 0.7 + peerScore * 0.3 when both exist.
+      // Peer review is an optional enhancement — it refines the score
+      // but does NOT gate or revoke certificates (those use aiScore).
+      let finalScore: number;
+      if (aiScore !== null && peerScore !== null) {
+        finalScore = Math.round((aiScore * 0.7 + peerScore * 0.3) * 100) / 100;
+      } else if (aiScore !== null) {
+        finalScore = aiScore;
+      } else if (peerScore !== null) {
+        finalScore = peerScore;
+      } else {
+        finalScore = 0;
+      }
 
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
-          peerScore: aggregated.peerScore ?? null,
-          finalScore: aggregated.finalScore,
+          peerScore: peerScore ?? null,
+          finalScore,
         },
       });
 
-      this.logger.log(`Aggregated scores for submission ${submissionId}`);
+      this.logger.log(
+        `Peer review aggregated for submission ${submissionId}: ` +
+          `aiScore=${aiScore}, peerScore=${peerScore}, finalScore=${finalScore} ` +
+          `(non-blocking — certificates and domain scores use aiScore)`
+      );
     }
   }
 }
