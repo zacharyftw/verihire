@@ -631,12 +631,19 @@ export class CandidatesService {
             );
           }
         })
-        .catch(err =>
+        .catch(async err => {
           this.logger.error(
             `Resume analysis failed for ${candidateId}: ${err.message || err}`,
             err.stack
-          )
-        );
+          );
+          // Mark that analysis was attempted but failed, so we don't silently ignore it
+          await prisma.candidateProfile
+            .update({
+              where: { id: candidateId },
+              data: { resumeAnalyzedAt: null },
+            })
+            .catch(() => {});
+        });
     }
 
     return { url: result.url, key: result.key };
@@ -812,6 +819,7 @@ export class CandidatesService {
         resumeDomains: true,
         resumeYearsExp: true,
         resumeAnalyzedAt: true,
+        resumeUrl: true,
         domainScores: true,
       },
     });
@@ -821,7 +829,13 @@ export class CandidatesService {
     }
 
     if (!profile.resumeAnalyzedAt) {
-      throw new BadRequestException('Candidate has no resume analysis yet');
+      if (profile.resumeUrl) {
+        return {
+          questions: [],
+          message: 'Resume analysis is still in progress. Please try again shortly.',
+        };
+      }
+      throw new BadRequestException('Candidate has no resume uploaded yet');
     }
 
     const seniorityLevel = profile.resumeSeniorityLevel || 'mid';
@@ -835,16 +849,21 @@ export class CandidatesService {
       ? ` (candidate scored ${JSON.stringify(domainScore)} in ${domain})`
       : '';
 
-    const questions = await this.resumeAnalysisService.generateCandidateQuestions({
-      challengeTitle: domain,
-      challengeDescription: `Interview questions for a ${seniorityLevel} ${domain} developer with ${totalYearsExp} years experience${scoreContext}`,
-      resumeContext: {
-        seniorityLevel,
-        domains,
-        totalYearsExp,
-      },
-    });
+    try {
+      const questions = await this.resumeAnalysisService.generateCandidateQuestions({
+        challengeTitle: domain,
+        challengeDescription: `Interview questions for a ${seniorityLevel} ${domain} developer with ${totalYearsExp} years experience${scoreContext}`,
+        resumeContext: {
+          seniorityLevel,
+          domains,
+          totalYearsExp,
+        },
+      });
 
-    return questions;
+      return questions;
+    } catch (error) {
+      this.logger.error(`Interview question generation failed: ${error}`);
+      return { questions: [], message: 'Failed to generate questions. Please try again.' };
+    }
   }
 }

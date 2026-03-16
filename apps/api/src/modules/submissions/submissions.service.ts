@@ -158,8 +158,15 @@ export class SubmissionsService {
     });
 
     // Run evaluation asynchronously (fire-and-forget)
-    this.evaluationsService.evaluateSubmission(updated.id).catch(err => {
+    this.evaluationsService.evaluateSubmission(updated.id).catch(async err => {
       this.logger.error(`Evaluation failed for submission ${updated.id}: ${err.message}`);
+      // Reset status so candidate can retry
+      await prisma.submission
+        .update({
+          where: { id: updated.id },
+          data: { status: 'SUBMITTED' },
+        })
+        .catch(() => {}); // ignore if this fails too
     });
 
     return updated;

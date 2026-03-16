@@ -393,7 +393,9 @@ export class ReviewsService {
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
-        evaluations: true,
+        evaluations: {
+          orderBy: { createdAt: 'desc' },
+        },
         reviews: {
           where: { status: { in: ['SUBMITTED', 'VALIDATED'] } },
         },
