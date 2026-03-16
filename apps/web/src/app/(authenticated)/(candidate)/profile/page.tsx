@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Save, Plus, X } from 'lucide-react';
+import { Save, Plus, X, Upload, FileText, Trash2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,9 @@ import {
   updateCandidateProfile,
   addCandidateSkill,
   removeCandidateSkill,
+  uploadResume,
+  deleteResume,
+  useResumeAnalysis,
 } from '@/hooks/use-candidate';
 import { useSkills } from '@/hooks/use-skills';
 import { profileSchema, type ProfileValues } from '@/lib/validations';
@@ -42,9 +45,12 @@ export default function ProfilePage() {
   const { data: profile, isLoading, mutate: mutateProfile } = useCandidateProfile();
   const { data: skills, mutate: mutateSkills } = useCandidateSkills();
   const { data: allSkills } = useSkills();
+  const { data: analysis, mutate: mutateAnalysis } = useResumeAnalysis(profile?.id);
   const [saving, setSaving] = useState(false);
   const [addingSkill, setAddingSkill] = useState(false);
   const [selectedSkillId, setSelectedSkillId] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const form = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
@@ -128,6 +134,47 @@ export default function ProfilePage() {
       toast({ title: 'Skill removed' });
     } catch {
       toast({ title: 'Failed to remove skill', variant: 'destructive' });
+    }
+  }
+
+  async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await uploadResume(file);
+      await mutateProfile();
+      toast({ title: 'Resume uploaded', description: 'AI analysis will run in the background.' });
+      // Poll for analysis results after a delay
+      setTimeout(() => mutateAnalysis(), 5000);
+      setTimeout(() => mutateAnalysis(), 15000);
+    } catch (err) {
+      toast({
+        title: 'Failed to upload resume',
+        variant: 'destructive',
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleDeleteResume() {
+    setDeleting(true);
+    try {
+      await deleteResume();
+      await mutateProfile();
+      await mutateAnalysis();
+      toast({ title: 'Resume deleted' });
+    } catch (err) {
+      toast({
+        title: 'Failed to delete resume',
+        variant: 'destructive',
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -296,6 +343,118 @@ export default function ProfilePage() {
               </Button>
             </form>
           </Form>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Resume</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {profile?.resumeUrl ? (
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm">Resume uploaded</span>
+              </div>
+              <div className="flex gap-2">
+                <label className="cursor-pointer">
+                  <Input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={handleResumeUpload}
+                    disabled={uploading}
+                  />
+                  <Button variant="outline" size="sm" asChild disabled={uploading}>
+                    <span>
+                      {uploading ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-1 h-4 w-4" />
+                      )}
+                      Replace
+                    </span>
+                  </Button>
+                </label>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteResume}
+                  disabled={deleting}
+                >
+                  <Trash2 className="mr-1 h-4 w-4" />
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors hover:border-primary/50 hover:bg-muted/50">
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={handleResumeUpload}
+                disabled={uploading}
+              />
+              {uploading ? (
+                <Loader2 className="mb-2 h-8 w-8 animate-spin text-muted-foreground" />
+              ) : (
+                <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
+              )}
+              <span className="text-sm font-medium">
+                {uploading ? 'Uploading...' : 'Upload Resume'}
+              </span>
+              <span className="text-xs text-muted-foreground">PDF, DOC, or DOCX (max 10MB)</span>
+            </label>
+          )}
+
+          {analysis?.analyzed && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <p className="text-sm font-medium">AI Analysis Results</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Seniority Level</p>
+                    <Badge variant="secondary" className="mt-1 capitalize">
+                      {analysis.seniorityLevel || 'Unknown'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Years of Experience</p>
+                    <p className="mt-1 text-sm font-medium">
+                      {analysis.yearsExperience != null
+                        ? `${analysis.yearsExperience} years`
+                        : 'Unknown'}
+                    </p>
+                  </div>
+                </div>
+                {analysis.domains?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Detected Domains</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {analysis.domains.map(domain => (
+                        <Badge key={domain} variant="outline" className="text-xs">
+                          {domain}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Analyzed {new Date(analysis.analyzedAt!).toLocaleDateString()}
+                </p>
+              </div>
+            </>
+          )}
+
+          {profile?.resumeUrl && !analysis?.analyzed && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              AI analysis in progress...
+            </div>
+          )}
         </CardContent>
       </Card>
 
