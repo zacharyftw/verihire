@@ -59,12 +59,13 @@ export class ResumeAnalysisService {
       return '';
     }
     try {
-      const pdfModule = await import('pdf-parse');
-      const pdfParse = pdfModule.default ?? pdfModule;
-      const data = await (pdfParse as unknown as (buf: Buffer) => Promise<{ text: string }>)(
-        buffer
-      );
-      return data.text || '';
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ verbosity: 0 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (parser as any).load(buffer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (parser as any).getText();
+      return typeof result === 'string' ? result : String(result) || '';
     } catch (error) {
       this.logger.warn(`PDF text extraction failed: ${error}`);
       return '';
