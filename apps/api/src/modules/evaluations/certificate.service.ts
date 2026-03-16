@@ -12,6 +12,8 @@ export interface CertificateData {
   peerScore?: number;
   criteriaScores: Record<string, { score: number; maxScore: number }>;
   confidence: number;
+  domainTag?: string;
+  domainLevel?: string;
 }
 
 export interface GeneratedCertificate {
@@ -129,6 +131,14 @@ export class CertificateService {
           signature,
           publicKey,
           verificationUrl,
+          metadata: data.domainTag
+            ? {
+                domainTag: data.domainTag,
+                domainLevel: data.domainLevel || grade,
+                certificateType: 'DOMAIN',
+                title: `Certified ${data.domainTag} Developer — ${data.domainLevel || grade}`,
+              }
+            : { certificateType: 'CHALLENGE' },
         },
       });
 
