@@ -589,7 +589,7 @@ export class CandidatesService {
                 title: c.title,
                 description: c.description,
                 difficulty: c.difficulty as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT',
-                type: 'CODING',
+                type: c.type as 'CODING' | 'DESIGN' | 'WRITTEN' | 'MIXED',
                 category: c.category as 'GENERAL_SWE' | 'DOMAIN_SPECIFIC',
                 referenceSolution: c.referenceSolution,
                 solutionLanguage: c.solutionLanguage,
