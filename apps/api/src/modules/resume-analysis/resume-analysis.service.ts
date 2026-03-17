@@ -300,6 +300,7 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
       title: string;
       description: string;
       difficulty: string;
+      type: string;
       category: string;
       referenceSolution: string;
       solutionLanguage: string;
@@ -332,29 +333,41 @@ RESPONSE FORMAT (JSON only, no markdown):
   "challenges": [
     {
       "title": "Unique, specific challenge title",
-      "description": "Detailed problem with 2-3 input/output examples",
+      "description": "Detailed problem description with clear expectations",
       "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT",
+      "type": "CODING" | "DESIGN" | "WRITTEN" | "MIXED",
       "category": "GENERAL_SWE" | "DOMAIN_SPECIFIC",
-      "referenceSolution": "Complete working solution code",
-      "solutionLanguage": "python" | "javascript" | "typescript"
+      "referenceSolution": "Complete solution (code for CODING/MIXED, detailed text for DESIGN/WRITTEN)",
+      "solutionLanguage": "python" | "javascript" | "typescript" | "plaintext" | etc.
     }
   ]
 }
 
 CRITICAL RULES:
-- Generate exactly 8 challenges: 4 GENERAL_SWE + 4 DOMAIN_SPECIFIC
-- Difficulty spread: ${difficultySpread}
-- Each challenge MUST have a UNIQUE title — no duplicates, no generic names like "String Reversal" or "Array Rotation"
-- GENERAL_SWE: substantial algorithmic problems (hash maps, graphs, trees, dynamic programming, sliding window, etc.) — NOT trivial one-liners
-- DOMAIN_SPECIFIC: practical, real-world problems using the candidate's SPECIFIC tech stack (not generic). Examples:
-  * If they know NestJS: "Implement a rate-limiting guard middleware"
-  * If they know React: "Build a debounced search component with abort controller"
-  * If they know Prisma: "Write a recursive category tree query with Prisma"
-  * If they know Rust: "Implement a thread-safe LRU cache"
-  * If they know Docker: "Write a multi-stage Dockerfile for a Node.js monorepo"
-- solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash" — pick the language most relevant to the candidate's domain for each challenge
-- Reference solutions must be COMPLETE, RUNNABLE, self-contained code (no external dependencies, no imports from frameworks)
-- Each description must clearly state input format, output format, and 2-3 examples
+- Generate exactly 10 challenges with this type breakdown:
+  * 4 CODING challenges (type: "CODING") — 2 GENERAL_SWE + 2 DOMAIN_SPECIFIC
+  * 2 DESIGN challenges (type: "DESIGN") — system design / architecture problems. Ask the candidate to describe or diagram an architecture, design an API, or plan a system. These are DOMAIN_SPECIFIC.
+  * 2 WRITTEN challenges (type: "WRITTEN") — conceptual/theoretical questions. Ask the candidate to explain tradeoffs, compare approaches, debug a scenario, or write technical documentation. These are DOMAIN_SPECIFIC.
+  * 2 MIXED challenges (type: "MIXED") — combine coding with explanation. Ask the candidate to implement something AND explain their design decisions, tradeoffs, or complexity analysis. One GENERAL_SWE + one DOMAIN_SPECIFIC.
+- Difficulty spread: ${difficultySpread} (distribute across all types)
+- Each challenge MUST have a UNIQUE title — no duplicates, no generic names
+- CODING challenges: substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
+- DESIGN challenges: real-world system design relevant to the candidate's stack. Examples:
+  * "Design a rate-limited API gateway for a microservices architecture"
+  * "Design the database schema and API for a real-time chat system"
+  * "Architect a CI/CD pipeline for a monorepo with multiple services"
+- WRITTEN challenges: deep technical knowledge questions. Examples:
+  * "Explain the tradeoffs between SSR, SSG, and ISR in Next.js"
+  * "Compare event-driven vs request-response architectures for a notification system"
+  * "Describe how you would debug a memory leak in a Node.js production service"
+- MIXED challenges: code + explanation combined. Examples:
+  * "Implement a caching layer and explain your eviction strategy"
+  * "Write a database migration and explain how you'd handle rollbacks"
+- DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
+- For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
+- For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
+- CODING reference solutions must be COMPLETE, RUNNABLE, self-contained code
+- Each description must clearly state what is expected from the candidate
 - Output ONLY valid JSON`;
 
     const userPrompt = `CANDIDATE PROFILE:
@@ -362,7 +375,7 @@ CRITICAL RULES:
 - Full tech stack: ${topDomains.join(', ')}
 ${isMidOrAbove ? '- This is a mid/senior+ candidate — challenges should test production-level thinking, edge cases, and system design awareness' : '- Junior candidate — challenges should be meaningful but approachable, testing real understanding not just syntax'}
 
-Generate 8 unique, personalized coding challenges. Make the DOMAIN_SPECIFIC ones truly specific to their stack — not generic.`;
+Generate 10 unique, personalized challenges across CODING, DESIGN, WRITTEN, and MIXED types. Make every challenge specific to their stack.`;
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -407,11 +420,14 @@ Generate 8 unique, personalized coding challenges. Make the DOMAIN_SPECIFIC ones
         'bash',
       ];
 
+      const validTypes = ['CODING', 'DESIGN', 'WRITTEN', 'MIXED'];
+
       return (parsed.challenges || []).map(
         (c: {
           title: string;
           description: string;
           difficulty?: string;
+          type?: string;
           category?: string;
           referenceSolution: string;
           solutionLanguage?: string;
@@ -423,11 +439,15 @@ Generate 8 unique, personalized coding challenges. Make the DOMAIN_SPECIFIC ones
           )
             ? c.difficulty
             : 'INTERMEDIATE',
+          type: validTypes.includes(c.type || '') ? c.type! : 'CODING',
           category: c.category || 'GENERAL_SWE',
           referenceSolution: c.referenceSolution,
-          solutionLanguage: validLanguages.includes(c.solutionLanguage || '')
-            ? c.solutionLanguage!
-            : 'python',
+          solutionLanguage:
+            c.solutionLanguage === 'plaintext'
+              ? 'plaintext'
+              : validLanguages.includes(c.solutionLanguage || '')
+                ? c.solutionLanguage!
+                : 'python',
         })
       );
     } catch (error) {
