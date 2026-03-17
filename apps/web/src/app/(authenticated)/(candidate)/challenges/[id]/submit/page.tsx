@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Save, Send, Clock } from 'lucide-react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -13,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { useChallenge } from '@/hooks/use-challenges';
@@ -23,20 +24,25 @@ import {
   updateSubmission,
   submitSolution,
 } from '@/hooks/use-submissions';
-import { ROUTES } from '@/lib/constants';
+import { ROUTES, DIFFICULTY_LABELS, DIFFICULTY_COLORS } from '@/lib/constants';
 import { api } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
-function parseAndRenderRequirements(data: unknown): React.ReactNode {
-  if (!data) return 'No specific requirements provided.';
-  let parsed = data;
-  if (typeof parsed === 'string') {
+function parseJsonField(value: unknown): unknown {
+  if (!value) return null;
+  if (typeof value === 'string') {
     try {
-      parsed = JSON.parse(parsed);
+      return JSON.parse(value);
     } catch {
-      return parsed as string;
+      return value;
     }
   }
+  return value;
+}
+
+function parseAndRenderRequirements(data: unknown): React.ReactNode {
+  const parsed = parseJsonField(data);
+  if (!parsed) return null;
   if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
     return (
       <ul className="list-disc space-y-1 pl-5">
@@ -50,13 +56,32 @@ function parseAndRenderRequirements(data: unknown): React.ReactNode {
   return JSON.stringify(parsed, null, 2);
 }
 
+function renderCriteria(data: unknown): React.ReactNode {
+  const parsed = parseJsonField(data);
+  if (!parsed) return null;
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.name) {
+    return (
+      <div className="space-y-1.5">
+        {parsed.map((item: { name: string; weight: number }, i: number) => (
+          <div key={i} className="flex items-center justify-between rounded border px-2.5 py-1.5">
+            <span className="text-xs">{item.name}</span>
+            <Badge variant="outline" className="text-[10px]">
+              {Math.round(item.weight * 100)}%
+            </Badge>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return parseAndRenderRequirements(data);
+}
+
 /**
  * Parse JS/TS function signatures from starter code and convert to the target language.
  */
 function convertStarterCode(jsCode: string, targetLang: string): string {
   if (targetLang === 'javascript' || targetLang === 'typescript') return jsCode;
 
-  // Extract functions: name and params
   const fnRegex = /function\s+(\w+)\s*\(([^)]*)\)\s*\{[^}]*\/\/\s*Your code here[^}]*\}/g;
   const functions: { name: string; params: string[] }[] = [];
   let match;
@@ -72,7 +97,6 @@ function convertStarterCode(jsCode: string, targetLang: string): string {
 
   if (!functions.length) return `// Implement your solution here\n`;
 
-  // Also extract top-level comments
   const commentMatch = jsCode.match(/^\/\/\s*(.+)/);
   const topComment = commentMatch ? commentMatch[1] : 'Implement your solution';
 
@@ -149,7 +173,7 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react').then(mod => mo
   ),
 });
 
-const LANGUAGES = [
+const ALL_LANGUAGES = [
   { value: 'javascript', label: 'JavaScript' },
   { value: 'typescript', label: 'TypeScript' },
   { value: 'python', label: 'Python' },
@@ -174,6 +198,16 @@ export default function SubmitChallengePage() {
   const hasUserEdited = useRef(false);
   const lastGeneratedCode = useRef<string>('');
 
+  // Filter languages based on challenge's supportedLanguages
+  const availableLanguages = useMemo(() => {
+    const supported = challenge?.supportedLanguages as string[] | null | undefined;
+    if (supported && Array.isArray(supported) && supported.length > 0) {
+      const filtered = ALL_LANGUAGES.filter(l => supported.includes(l.value));
+      return filtered.length > 0 ? filtered : ALL_LANGUAGES;
+    }
+    return ALL_LANGUAGES;
+  }, [challenge?.supportedLanguages]);
+
   // Initialize code from active submission or starter code
   useEffect(() => {
     if (activeSubmission?.content) {
@@ -187,9 +221,15 @@ export default function SubmitChallengePage() {
     }
   }, [activeSubmission, challenge]);
 
+  // Default to first supported language if current selection isn't available
+  useEffect(() => {
+    if (availableLanguages.length > 0 && !availableLanguages.find(l => l.value === language)) {
+      setLanguage(availableLanguages[0].value);
+    }
+  }, [availableLanguages, language]);
+
   function handleLanguageChange(newLang: string) {
     setLanguage(newLang);
-    // Only swap boilerplate if user hasn't manually edited beyond starter code
     if (!hasUserEdited.current && challenge?.starterCode) {
       const converted = convertStarterCode(challenge.starterCode, newLang);
       setCode(converted);
@@ -253,13 +293,11 @@ export default function SubmitChallengePage() {
     try {
       let subId = activeSubmission?.id;
 
-      // If no active submission loaded, try starting one (may already exist)
       if (!subId) {
         try {
           const sub = await startSubmission(id);
           subId = sub.id;
         } catch {
-          // If start fails (already exists), re-fetch the active submission
           const fetched = await api.get<{ id: string }>(`/submissions/active/${id}`);
           subId = fetched?.id;
         }
@@ -293,8 +331,9 @@ export default function SubmitChallengePage() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Header */}
       <div className="flex items-center justify-between border-b pb-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" asChild>
             <Link href={ROUTES.challengeDetail(id)}>
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -302,6 +341,11 @@ export default function SubmitChallengePage() {
             </Link>
           </Button>
           <h1 className="text-lg font-semibold">{challenge?.title}</h1>
+          {challenge?.difficulty && (
+            <Badge variant="secondary" className={DIFFICULTY_COLORS[challenge.difficulty]}>
+              {DIFFICULTY_LABELS[challenge.difficulty]}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {timeLeft !== null && (
@@ -310,6 +354,11 @@ export default function SubmitChallengePage() {
             >
               <Clock className="h-4 w-4" />
               {formatTime(timeLeft)}
+              {challenge?.timeLimitMinutes && (
+                <span className="text-xs text-muted-foreground">
+                  / {challenge.timeLimitMinutes}:00
+                </span>
+              )}
             </div>
           )}
           <Select value={language} onValueChange={handleLanguageChange}>
@@ -317,25 +366,36 @@ export default function SubmitChallengePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {LANGUAGES.map(lang => (
+              {availableLanguages.map(lang => (
                 <SelectItem key={lang.value} value={lang.value}>
                   {lang.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleSave}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSave}
+            title="Save progress without submitting. Your code is also auto-saved every 5 seconds."
+          >
             <Save className="mr-2 h-4 w-4" />
             Save
           </Button>
-          <Button size="sm" onClick={() => setConfirmOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setConfirmOpen(true)}
+            title="Submit your solution for AI evaluation. This cannot be undone."
+          >
             <Send className="mr-2 h-4 w-4" />
             Submit
           </Button>
         </div>
       </div>
 
+      {/* Main content */}
       <div className="mt-4 grid flex-1 gap-4 lg:grid-cols-3">
+        {/* Editor */}
         <div className="overflow-hidden rounded-lg border lg:col-span-2">
           <MonacoEditor
             height="100%"
@@ -353,16 +413,55 @@ export default function SubmitChallengePage() {
             }}
           />
         </div>
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="text-sm">Requirements</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">
-              {parseAndRenderRequirements(challenge?.requirements)}
+
+        {/* Right panel — scrollable */}
+        <div className="space-y-4 overflow-y-auto lg:max-h-[calc(100vh-10rem)]">
+          {/* Problem Description */}
+          {challenge?.description && (
+            <div className="rounded-lg border p-4">
+              <h3 className="mb-2 text-sm font-semibold">Problem</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {challenge.description}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          {/* Requirements */}
+          {challenge?.requirements && (
+            <div className="rounded-lg border p-4">
+              <h3 className="mb-2 text-sm font-semibold">Requirements</h3>
+              <div className="text-sm text-muted-foreground">
+                {parseAndRenderRequirements(challenge.requirements)}
+              </div>
+            </div>
+          )}
+
+          {/* Evaluation Criteria */}
+          {challenge?.evaluationCriteria && (
+            <div className="rounded-lg border p-4">
+              <h3 className="mb-2 text-sm font-semibold">Evaluation Criteria</h3>
+              <div className="text-sm text-muted-foreground">
+                {renderCriteria(challenge.evaluationCriteria)}
+              </div>
+            </div>
+          )}
+
+          {/* Info footer */}
+          <div className="rounded-lg border bg-muted/50 p-4">
+            <div className="space-y-1.5 text-xs text-muted-foreground">
+              <p>
+                Your code is <strong>auto-saved</strong> every 5 seconds.
+              </p>
+              <Separator />
+              <p>
+                <strong>Save</strong> — saves your progress so you can return later.
+              </p>
+              <p>
+                <strong>Submit</strong> — sends your code for AI evaluation. This is final.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <ConfirmDialog

@@ -136,11 +136,19 @@ export default function ChallengeDetailPage() {
             )}
             <div className="flex items-center gap-2">
               <Code2 className="h-4 w-4 text-muted-foreground" />
-              <span>Type: {challenge.type}</span>
+              <span>
+                Type:{' '}
+                {challenge.type
+                  ? challenge.type.charAt(0) + challenge.type.slice(1).toLowerCase()
+                  : 'General'}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Award className="h-4 w-4 text-muted-foreground" />
-              <span>{challenge.timesAttempted || 0} attempts</span>
+              <span>
+                {challenge.timesAttempted || 0}{' '}
+                {(challenge.timesAttempted || 0) === 1 ? 'attempt' : 'attempts'}
+              </span>
             </div>
           </div>
 
