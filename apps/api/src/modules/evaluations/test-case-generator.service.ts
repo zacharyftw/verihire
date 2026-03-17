@@ -330,6 +330,147 @@ Provide feedback on this submission.`;
     return hints[problemType] || '- Empty input, single element, typical input, large input';
   }
 
+  /**
+   * Evaluate a text-based submission (DESIGN, WRITTEN, or the explanation part of MIXED)
+   * Uses LLM to score against reference solution on 5 criteria
+   */
+  async evaluateTextSubmission(params: {
+    challengeTitle: string;
+    challengeDescription: string;
+    candidateAnswer: string;
+    referenceSolution: string;
+    challengeType: string;
+  }): Promise<{
+    overallScore: number;
+    criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }>;
+    feedback: string;
+    suggestions: string[];
+  }> {
+    if (!this.apiKey) {
+      return this.getMockTextEvaluation();
+    }
+
+    const typeLabel =
+      params.challengeType === 'DESIGN'
+        ? 'system design'
+        : params.challengeType === 'WRITTEN'
+          ? 'written/conceptual'
+          : 'mixed (explanation portion)';
+
+    const systemPrompt = `You are an expert technical evaluator scoring a ${typeLabel} answer.
+
+RESPONSE FORMAT (JSON only, no markdown):
+{
+  "completeness": { "score": 0-20, "feedback": "..." },
+  "technicalAccuracy": { "score": 0-20, "feedback": "..." },
+  "depthOfAnalysis": { "score": 0-20, "feedback": "..." },
+  "practicality": { "score": 0-20, "feedback": "..." },
+  "communication": { "score": 0-20, "feedback": "..." },
+  "overallFeedback": "2-3 sentence overall assessment",
+  "suggestions": ["improvement 1", "improvement 2", "improvement 3"]
+}
+
+SCORING GUIDE:
+- completeness: Did they cover all aspects of the problem? Missing key components?
+- technicalAccuracy: Are the technical facts, tradeoffs, and claims correct?
+- depthOfAnalysis: Surface-level vs deep understanding? Did they consider edge cases, failure modes, scalability?
+- practicality: Could this actually work in production? Is it realistic and implementable?
+- communication: Is the answer clear, well-structured, and easy to follow?
+
+Each criterion is scored 0-20. Total max = 100.
+Be fair but rigorous. A perfect score should be rare.
+Output ONLY valid JSON.`;
+
+    const userPrompt = `CHALLENGE: ${params.challengeTitle}
+DESCRIPTION: ${params.challengeDescription}
+
+REFERENCE SOLUTION (ideal answer):
+${params.referenceSolution.slice(0, 3000)}
+
+CANDIDATE'S ANSWER:
+${params.candidateAnswer.slice(0, 4000)}
+
+Evaluate the candidate's answer against the reference solution.`;
+
+    try {
+      const response = await this.callLLM(systemPrompt, userPrompt);
+      const parsed = JSON.parse(
+        response
+          .replace(/```json?\n?/g, '')
+          .replace(/```/g, '')
+          .trim()
+      );
+
+      const criteria = [
+        'completeness',
+        'technicalAccuracy',
+        'depthOfAnalysis',
+        'practicality',
+        'communication',
+      ];
+      const criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }> =
+        {};
+      let totalScore = 0;
+
+      for (const key of criteria) {
+        const c = parsed[key] || { score: 10, feedback: 'No evaluation available' };
+        const score = Math.min(20, Math.max(0, Math.round(c.score)));
+        criteriaScores[key] = { score, maxScore: 20, feedback: c.feedback || '' };
+        totalScore += score;
+      }
+
+      return {
+        overallScore: totalScore,
+        criteriaScores,
+        feedback: parsed.overallFeedback || 'Evaluation complete.',
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      };
+    } catch (error) {
+      this.logger.error(`Text evaluation failed: ${error}`);
+      return this.getMockTextEvaluation();
+    }
+  }
+
+  private getMockTextEvaluation(): {
+    overallScore: number;
+    criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }>;
+    feedback: string;
+    suggestions: string[];
+  } {
+    return {
+      overallScore: 50,
+      criteriaScores: {
+        completeness: {
+          score: 10,
+          maxScore: 20,
+          feedback: 'Evaluation unavailable — default score applied.',
+        },
+        technicalAccuracy: {
+          score: 10,
+          maxScore: 20,
+          feedback: 'Evaluation unavailable — default score applied.',
+        },
+        depthOfAnalysis: {
+          score: 10,
+          maxScore: 20,
+          feedback: 'Evaluation unavailable — default score applied.',
+        },
+        practicality: {
+          score: 10,
+          maxScore: 20,
+          feedback: 'Evaluation unavailable — default score applied.',
+        },
+        communication: {
+          score: 10,
+          maxScore: 20,
+          feedback: 'Evaluation unavailable — default score applied.',
+        },
+      },
+      feedback: 'AI evaluation was unavailable. A default score has been applied.',
+      suggestions: ['Please retry submission when AI evaluation is available.'],
+    };
+  }
+
   private getMockFeedback(accuracy: number): GeneratedFeedback {
     if (accuracy >= 90) {
       return {
