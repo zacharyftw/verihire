@@ -361,18 +361,20 @@ export default function SubmitChallengePage() {
               )}
             </div>
           )}
-          <Select value={language} onValueChange={handleLanguageChange}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableLanguages.map(lang => (
-                <SelectItem key={lang.value} value={lang.value}>
-                  {lang.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {challenge?.type !== 'WRITTEN' && (
+            <Select value={language} onValueChange={handleLanguageChange}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableLanguages.map(lang => (
+                  <SelectItem key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -395,23 +397,32 @@ export default function SubmitChallengePage() {
 
       {/* Main content */}
       <div className="mt-4 grid flex-1 gap-4 lg:grid-cols-3">
-        {/* Editor */}
+        {/* Editor / Writer */}
         <div className="overflow-hidden rounded-lg border lg:col-span-2">
-          <MonacoEditor
-            height="100%"
-            language={language}
-            value={code}
-            onChange={handleCodeChange}
-            theme="vs-dark"
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              wordWrap: 'on',
-              automaticLayout: true,
-            }}
-          />
+          {challenge?.type === 'WRITTEN' ? (
+            <textarea
+              className="h-full w-full resize-none bg-background p-6 text-sm leading-relaxed focus:outline-none"
+              placeholder="Write your answer here..."
+              value={code}
+              onChange={e => handleCodeChange(e.target.value)}
+            />
+          ) : (
+            <MonacoEditor
+              height="100%"
+              language={language}
+              value={code}
+              onChange={handleCodeChange}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                automaticLayout: true,
+              }}
+            />
+          )}
         </div>
 
         {/* Right panel — scrollable */}
@@ -450,14 +461,16 @@ export default function SubmitChallengePage() {
           <div className="rounded-lg border bg-muted/50 p-4">
             <div className="space-y-1.5 text-xs text-muted-foreground">
               <p>
-                Your code is <strong>auto-saved</strong> every 5 seconds.
+                Your work is <strong>auto-saved</strong> every 5 seconds.
               </p>
               <Separator />
               <p>
                 <strong>Save</strong> — saves your progress so you can return later.
               </p>
               <p>
-                <strong>Submit</strong> — sends your code for AI evaluation. This is final.
+                <strong>Submit</strong> — sends your{' '}
+                {challenge?.type === 'WRITTEN' ? 'answer' : 'code'} for AI evaluation. This is
+                final.
               </p>
             </div>
           </div>
