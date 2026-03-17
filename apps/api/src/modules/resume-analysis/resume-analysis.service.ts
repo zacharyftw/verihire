@@ -304,6 +304,7 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
       category: string;
       referenceSolution: string;
       solutionLanguage: string;
+      domainTag: string;
     }>
   > {
     if (!this.apiKey) return [];
@@ -338,7 +339,8 @@ RESPONSE FORMAT (JSON only, no markdown):
       "type": "CODING" | "DESIGN" | "WRITTEN" | "MIXED",
       "category": "GENERAL_SWE" | "DOMAIN_SPECIFIC",
       "referenceSolution": "Complete solution (code for CODING/MIXED, detailed text for DESIGN/WRITTEN)",
-      "solutionLanguage": "python" | "javascript" | "typescript" | "plaintext" | etc.
+      "solutionLanguage": "python" | "javascript" | "typescript" | "plaintext" | etc.,
+      "domainTag": "The primary technology/domain this challenge assesses (e.g. 'React', 'Python', 'Node.js', 'System Design', 'SQL')"
     }
   ]
 }
@@ -436,6 +438,7 @@ Generate 10 unique, personalized challenges across CODING, DESIGN, WRITTEN, and 
           category?: string;
           referenceSolution: string;
           solutionLanguage?: string;
+          domainTag?: string;
         }) => ({
           title: c.title,
           description: c.description,
@@ -453,6 +456,7 @@ Generate 10 unique, personalized challenges across CODING, DESIGN, WRITTEN, and 
               : validLanguages.includes(c.solutionLanguage || '')
                 ? c.solutionLanguage!
                 : 'python',
+          domainTag: c.domainTag || 'General',
         })
       );
     } catch (error) {
