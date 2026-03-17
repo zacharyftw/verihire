@@ -351,7 +351,12 @@ CRITICAL RULES:
   * 2 MIXED challenges (type: "MIXED") — combine coding with explanation. Ask the candidate to implement something AND explain their design decisions, tradeoffs, or complexity analysis. One GENERAL_SWE + one DOMAIN_SPECIFIC.
 - Difficulty spread: ${difficultySpread} (distribute across all types)
 - Each challenge MUST have a UNIQUE title — no duplicates, no generic names
-- CODING challenges: substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
+- CODING challenges: MUST be self-contained, concrete problems — NOT vague prompts like "you are given a program, optimize it". Every CODING challenge MUST:
+  * State the EXACT function signature the candidate must implement (e.g. "Write a function called mergeIntervals(intervals: number[][]): number[][]")
+  * Provide 2-3 concrete input/output examples (e.g. "Input: [[1,3],[2,6],[8,10]] → Output: [[1,6],[8,10]]")
+  * If the problem involves starter code or existing code to refactor, INCLUDE the full starter code in the description
+  * Never say "you are given X" without actually providing X
+  * Use substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
 - DESIGN challenges: real-world system design relevant to the candidate's stack. Examples:
   * "Design a rate-limited API gateway for a microservices architecture"
   * "Design the database schema and API for a real-time chat system"
@@ -360,9 +365,9 @@ CRITICAL RULES:
   * "Explain the tradeoffs between SSR, SSG, and ISR in Next.js"
   * "Compare event-driven vs request-response architectures for a notification system"
   * "Describe how you would debug a memory leak in a Node.js production service"
-- MIXED challenges: code + explanation combined. Examples:
-  * "Implement a caching layer and explain your eviction strategy"
-  * "Write a database migration and explain how you'd handle rollbacks"
+- MIXED challenges: code + explanation combined. The coding part MUST follow the same rules as CODING (exact function signature, concrete examples, full starter code if needed). Additionally ask the candidate to explain their design decisions, tradeoffs, or time/space complexity. Examples:
+  * "Implement an LRU cache with get/put methods (provide signature + examples), then explain your eviction strategy and time complexity"
+  * "Given this database schema (provide it), write a migration to add soft deletes, then explain how you'd handle rollbacks in production"
 - DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
 - For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
 - For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
