@@ -369,4 +369,12 @@ export class CandidatesController {
   async getResumeAnalysis(@Param('id') id: string) {
     return this.candidatesService.getResumeAnalysis(id);
   }
+
+  @Get(':id/domain-scores')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get domain scores for a candidate' })
+  async getDomainScores(@Param('id') id: string) {
+    return this.candidatesService.getDomainScores(id);
+  }
 }

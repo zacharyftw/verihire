@@ -379,6 +379,9 @@ export class EvaluationsService {
         });
       }
 
+      // 14. Recalculate domain scores for this candidate
+      await this.recalculateDomainScores(submission.candidateId);
+
       this.logger.log(
         `Evaluation complete for ${submissionId}: score=${overallScore}, passed=${passed}, type=${challengeType}`
       );
@@ -875,6 +878,108 @@ export class EvaluationsService {
       if (b.has(item)) intersection++;
     }
     return intersection / (a.size + b.size - intersection);
+  }
+
+  /**
+   * Recalculate domain scores for a candidate after each evaluation.
+   * Formula: domainScore = Σ(challengeScore × difficultyWeight) / Σ(difficultyWeight)
+   * Weights: BEGINNER=1, INTERMEDIATE=2, ADVANCED=3, EXPERT=4
+   */
+  private async recalculateDomainScores(candidateId: string) {
+    try {
+      // Get all evaluated submissions for this candidate with their challenge details
+      const submissions = await prisma.submission.findMany({
+        where: {
+          candidateId,
+          status: 'EVALUATED',
+          aiScore: { not: null },
+        },
+        include: {
+          challenge: {
+            select: { domainTag: true, difficulty: true },
+          },
+        },
+      });
+
+      const difficultyWeights: Record<string, number> = {
+        BEGINNER: 1,
+        INTERMEDIATE: 2,
+        ADVANCED: 3,
+        EXPERT: 4,
+      };
+
+      // Group by domainTag
+      const domainMap: Record<
+        string,
+        { totalWeightedScore: number; totalWeight: number; count: number; maxDifficulty: string }
+      > = {};
+
+      for (const sub of submissions) {
+        const domain = sub.challenge.domainTag || 'General';
+        const difficulty = sub.challenge.difficulty || 'BEGINNER';
+        const weight = difficultyWeights[difficulty] || 1;
+        const score = Number(sub.aiScore) || 0;
+
+        if (!domainMap[domain]) {
+          domainMap[domain] = {
+            totalWeightedScore: 0,
+            totalWeight: 0,
+            count: 0,
+            maxDifficulty: 'BEGINNER',
+          };
+        }
+
+        domainMap[domain].totalWeightedScore += score * weight;
+        domainMap[domain].totalWeight += weight;
+        domainMap[domain].count += 1;
+
+        // Track max difficulty attempted
+        const currentMax = difficultyWeights[domainMap[domain].maxDifficulty] || 0;
+        if (weight > currentMax) {
+          domainMap[domain].maxDifficulty = difficulty;
+        }
+      }
+
+      // Calculate final scores and levels
+      const domainScores: Record<
+        string,
+        { score: number; count: number; level: string; maxDifficulty: string }
+      > = {};
+
+      for (const [domain, data] of Object.entries(domainMap)) {
+        const score = Math.round((data.totalWeightedScore / data.totalWeight) * 10) / 10;
+        const maxDiff = data.maxDifficulty;
+        const maxWeight = difficultyWeights[maxDiff] || 1;
+
+        // Level: based on score + max difficulty attempted
+        let level: string;
+        if (score >= 85 && maxWeight >= 3) level = 'EXPERT';
+        else if (score >= 70 && maxWeight >= 2) level = 'ADVANCED';
+        else if (score >= 60) level = 'INTERMEDIATE';
+        else level = 'BEGINNER';
+
+        domainScores[domain] = {
+          score,
+          count: data.count,
+          level,
+          maxDifficulty: maxDiff,
+        };
+      }
+
+      // Store on candidate profile
+      await prisma.candidateProfile.update({
+        where: { id: candidateId },
+        data: { domainScores: domainScores as any },
+      });
+
+      this.logger.log(
+        `Domain scores updated for candidate ${candidateId}: ${Object.entries(domainScores)
+          .map(([d, s]) => `${d}=${s.score}% (${s.level})`)
+          .join(', ')}`
+      );
+    } catch (error) {
+      this.logger.error(`Failed to recalculate domain scores: ${error}`);
+    }
   }
 
   private async updateChallengeStats(challengeId: string, score: number) {
