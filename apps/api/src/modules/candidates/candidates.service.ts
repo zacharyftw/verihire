@@ -785,4 +785,19 @@ export class CandidatesService {
       hasResume: !!profile.resumeUrl,
     };
   }
+
+  async getDomainScores(candidateId: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: { domainScores: true },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate profile not found');
+    }
+
+    return {
+      domains: profile.domainScores || {},
+    };
+  }
 }

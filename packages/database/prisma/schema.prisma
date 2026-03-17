@@ -156,6 +156,10 @@ model CandidateProfile {
   certificatesCount        Int     @default(0) @map("certificates_count")
   reputationScore          Decimal @default(50) @map("reputation_score") @db.Decimal(5, 2)
 
+  // Domain scores — aggregated weighted scores per domain
+  // Format: { "React": { score: 78.5, count: 4, level: "ADVANCED", maxDifficulty: "ADVANCED" }, ... }
+  domainScores Json? @map("domain_scores")
+
   // Resume analysis (AI-extracted)
   resumeText           String?   @map("resume_text") @db.Text
   resumeSeniorityLevel String?   @map("resume_seniority_level") @db.VarChar(20)
