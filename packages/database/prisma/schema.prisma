@@ -172,8 +172,9 @@ model CandidateProfile {
   candidateSkills CandidateSkill[]
   submissions    Submission[]
   certificates   Certificate[]
-  reviewsGiven   Review[]
-  shortlists     Shortlist[]
+  reviewsGiven        Review[]
+  shortlists          Shortlist[]
+  generatedChallenges Challenge[] @relation("GeneratedChallenges")
 
   @@index([userId])
   @@index([jobSearchStatus])
@@ -367,6 +368,10 @@ model Challenge {
   timeLimitMinutes   Int?               @map("time_limit_minutes")
   evaluationCriteria Json?              @map("evaluation_criteria")
 
+  // Personalization — tracks which candidate triggered generation and what domain it assesses
+  generatedForCandidateId String? @map("generated_for_candidate_id") @db.Uuid
+  domainTag               String? @map("domain_tag") @db.VarChar(100)
+
   // Metadata
   generatedAt     DateTime @default(now()) @map("generated_at") @db.Timestamptz
   generationModel String?  @map("generation_model") @db.VarChar(50)
@@ -381,14 +386,17 @@ model Challenge {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  template     ChallengeTemplate? @relation(fields: [templateId], references: [id])
-  skill        Skill?             @relation(fields: [skillId], references: [id])
-  submissions  Submission[]
-  certificates Certificate[]
+  template       ChallengeTemplate? @relation(fields: [templateId], references: [id])
+  skill          Skill?             @relation(fields: [skillId], references: [id])
+  generatedFor   CandidateProfile?  @relation("GeneratedChallenges", fields: [generatedForCandidateId], references: [id])
+  submissions    Submission[]
+  certificates   Certificate[]
 
   @@index([skillId])
   @@index([difficulty])
   @@index([type])
+  @@index([generatedForCandidateId])
+  @@index([domainTag])
   @@map("challenges")
 }
 

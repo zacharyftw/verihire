@@ -557,64 +557,76 @@ export class CandidatesService {
             `Resume analyzed for candidate ${candidateId}: ${analysis.seniorityLevel}, ${analysis.totalYearsExp}yr, domains: ${analysis.domains.join(', ')}`
           );
 
-          // Generate personalized challenges from resume
-          const challenges = await this.resumeAnalysisService.generateChallengesFromResume({
-            seniorityLevel: analysis.seniorityLevel,
-            domains: analysis.domains,
-            totalYearsExp: analysis.totalYearsExp,
+          // Skip challenge generation if this candidate already has generated challenges
+          const existingForCandidate = await prisma.challenge.count({
+            where: { generatedForCandidateId: candidateId },
           });
-
-          // Dedup: check existing challenge titles
-          const existingTitles = await prisma.challenge.findMany({
-            select: { title: true },
-          });
-          const existingSet = new Set(existingTitles.map(c => c.title.toLowerCase()));
-
-          const timeLimitMap: Record<string, number> = {
-            BEGINNER: 25,
-            INTERMEDIATE: 35,
-            ADVANCED: 45,
-            EXPERT: 60,
-          };
-
-          let created = 0;
-          for (const c of challenges) {
-            if (existingSet.has(c.title.toLowerCase())) {
-              this.logger.log(`Skipping duplicate challenge: ${c.title}`);
-              continue;
-            }
-            existingSet.add(c.title.toLowerCase());
-            await prisma.challenge.create({
-              data: {
-                title: c.title,
-                description: c.description,
-                difficulty: c.difficulty as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT',
-                type: c.type as 'CODING' | 'DESIGN' | 'WRITTEN' | 'MIXED',
-                category: c.category as 'GENERAL_SWE' | 'DOMAIN_SPECIFIC',
-                referenceSolution: c.referenceSolution,
-                solutionLanguage: c.solutionLanguage,
-                supportedLanguages: [
-                  'python',
-                  'javascript',
-                  'typescript',
-                  'java',
-                  'cpp',
-                  'csharp',
-                  'go',
-                  'rust',
-                  'ruby',
-                  'php',
-                  'kotlin',
-                  'swift',
-                ],
-                timeLimitMinutes: timeLimitMap[c.difficulty] || 30,
-              },
+          if (existingForCandidate > 0) {
+            this.logger.log(
+              `Candidate ${candidateId} already has ${existingForCandidate} generated challenges, skipping generation`
+            );
+          } else {
+            // Generate personalized challenges from resume
+            const challenges = await this.resumeAnalysisService.generateChallengesFromResume({
+              seniorityLevel: analysis.seniorityLevel,
+              domains: analysis.domains,
+              totalYearsExp: analysis.totalYearsExp,
             });
-            created++;
+
+            // Dedup: check existing challenge titles
+            const existingTitles = await prisma.challenge.findMany({
+              select: { title: true },
+            });
+            const existingSet = new Set(existingTitles.map(c => c.title.toLowerCase()));
+
+            const timeLimitMap: Record<string, number> = {
+              BEGINNER: 25,
+              INTERMEDIATE: 35,
+              ADVANCED: 45,
+              EXPERT: 60,
+            };
+
+            let created = 0;
+            for (const c of challenges) {
+              if (existingSet.has(c.title.toLowerCase())) {
+                this.logger.log(`Skipping duplicate challenge: ${c.title}`);
+                continue;
+              }
+              existingSet.add(c.title.toLowerCase());
+              await prisma.challenge.create({
+                data: {
+                  title: c.title,
+                  description: c.description,
+                  difficulty: c.difficulty as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT',
+                  type: c.type as 'CODING' | 'DESIGN' | 'WRITTEN' | 'MIXED',
+                  category: c.category as 'GENERAL_SWE' | 'DOMAIN_SPECIFIC',
+                  referenceSolution: c.referenceSolution,
+                  solutionLanguage: c.solutionLanguage,
+                  supportedLanguages: [
+                    'python',
+                    'javascript',
+                    'typescript',
+                    'java',
+                    'cpp',
+                    'csharp',
+                    'go',
+                    'rust',
+                    'ruby',
+                    'php',
+                    'kotlin',
+                    'swift',
+                  ],
+                  timeLimitMinutes: timeLimitMap[c.difficulty] || 30,
+                  generatedForCandidateId: candidateId,
+                  domainTag: c.domainTag,
+                },
+              });
+              created++;
+            }
+            this.logger.log(
+              `Generated ${created} personalized challenges for candidate ${candidateId} (${challenges.length - created} duplicates skipped)`
+            );
           }
-          this.logger.log(
-            `Generated ${created} personalized challenges for candidate ${candidateId} (${challenges.length - created} duplicates skipped)`
-          );
         })
         .catch(err =>
           this.logger.error(
