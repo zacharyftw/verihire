@@ -115,6 +115,8 @@ export type ChallengeDifficulty = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EX
 export type ChallengeType = 'CODING' | 'DESIGN' | 'WRITTEN' | 'MIXED';
 export type SubmissionStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'EVALUATING' | 'EVALUATED' | 'FAILED';
 
+export type ChallengeCategory = 'GENERAL_SWE' | 'DOMAIN_SPECIFIC';
+
 export interface Challenge {
   id: string;
   templateId: string | null;
@@ -126,6 +128,8 @@ export interface Challenge {
   starterCode: string | null;
   difficulty: ChallengeDifficulty | null;
   type: ChallengeType | null;
+  category: ChallengeCategory;
+  supportedLanguages: string[] | null;
   timeLimitMinutes: number | null;
   evaluationCriteria: Record<string, unknown> | null;
   timesAttempted: number;
@@ -185,7 +189,14 @@ export type RecruiterRole = 'RECRUITER' | 'HIRING_MANAGER' | 'ADMIN';
 export type RemotePolicy = 'REMOTE' | 'HYBRID' | 'ONSITE';
 export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERNSHIP';
 export type JobStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'CLOSED' | 'FILLED';
-export type ShortlistStage = 'SHORTLISTED' | 'SCREENING' | 'INTERVIEW' | 'ASSESSMENT' | 'OFFER' | 'HIRED' | 'REJECTED';
+export type ShortlistStage =
+  | 'SHORTLISTED'
+  | 'SCREENING'
+  | 'INTERVIEW'
+  | 'ASSESSMENT'
+  | 'OFFER'
+  | 'HIRED'
+  | 'REJECTED';
 
 export interface Company {
   id: string;
