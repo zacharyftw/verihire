@@ -1,89 +1,31 @@
 services:
-  # Judge0 CE - Code Execution Sandbox
-  judge0-server:
-    image: judge0/judge0:1.13.0
-    container_name: verihire-judge0-server
+  # VeriHire Code Execution Sandbox
+  sandbox:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.sandbox
+    image: verihire-sandbox
+    container_name: verihire-sandbox
+    command: ['echo', 'Sandbox image ready']
+    profiles: ['build-only']
+
+  # Execution Server — wraps Docker to execute code in sandbox containers
+  execution-server:
+    image: docker:cli
+    container_name: verihire-execution-server
     restart: unless-stopped
     ports:
-      - '2358:2358'
-    environment:
-      - POSTGRES_HOST=judge0-postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=judge0
-      - POSTGRES_PASSWORD=judge0_dev
-      - POSTGRES_DB=judge0
-      - REDIS_HOST=judge0-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=judge0_dev
-      - RAILS_MAX_THREADS=4
-      - RAILS_ENV=production
-      - ALLOW_ORIGIN=*
-    depends_on:
-      judge0-postgres:
-        condition: service_healthy
-      judge0-redis:
-        condition: service_healthy
-    privileged: true
-
-  judge0-worker:
-    image: judge0/judge0:1.13.0
-    container_name: verihire-judge0-worker
-    restart: unless-stopped
-    command: ['./scripts/workers']
-    environment:
-      - POSTGRES_HOST=judge0-postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=judge0
-      - POSTGRES_PASSWORD=judge0_dev
-      - POSTGRES_DB=judge0
-      - REDIS_HOST=judge0-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=judge0_dev
-      - RAILS_MAX_THREADS=4
-      - RAILS_ENV=production
-    depends_on:
-      judge0-postgres:
-        condition: service_healthy
-      judge0-redis:
-        condition: service_healthy
-    privileged: true
-
-  judge0-postgres:
-    image: postgres:16-alpine
-    container_name: verihire-judge0-postgres
-    restart: unless-stopped
-    ports:
-      - '5433:5432'
-    environment:
-      POSTGRES_USER: judge0
-      POSTGRES_PASSWORD: judge0_dev
-      POSTGRES_DB: judge0
+      - '9090:9090'
     volumes:
-      - judge0_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U judge0']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  judge0-redis:
-    image: redis:7-alpine
-    container_name: verihire-judge0-redis
-    restart: unless-stopped
-    ports:
-      - '6380:6379'
-    command: redis-server --appendonly yes --requirepass judge0_dev
-    volumes:
-      - judge0_redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', '--pass', 'judge0_dev', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  judge0_postgres_data:
-  judge0_redis_data:
+      - ./docker/execution-server.js:/app/server.js:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    entrypoint: ['sh', '-c', 'apk add --no-cache nodejs && node /app/server.js']
+    environment:
+      PORT: 9090
+      SANDBOX_IMAGE: verihire-sandbox
+      TIMEOUT: 10
+      MEMORY_LIMIT: 256m
 
 networks:
   default:
