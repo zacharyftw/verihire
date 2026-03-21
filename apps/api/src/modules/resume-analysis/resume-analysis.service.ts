@@ -334,191 +334,154 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
 
     const { seniorityLevel, domains, totalYearsExp } = resumeContext;
     const isMidOrAbove = ['mid', 'senior', 'staff'].includes(seniorityLevel);
-
-    // Use MORE domains — up to 15 to cover the candidate's actual breadth
     const topDomains = domains.slice(0, 15);
 
-    // Difficulty spread based on seniority
-    let difficultySpread: string;
-    if (seniorityLevel === 'entry') {
-      difficultySpread = '5 BEGINNER + 2 INTERMEDIATE + 1 ADVANCED';
-    } else if (seniorityLevel === 'junior') {
-      difficultySpread = '3 BEGINNER + 3 INTERMEDIATE + 2 ADVANCED';
-    } else if (seniorityLevel === 'mid') {
-      difficultySpread = '1 BEGINNER + 3 INTERMEDIATE + 3 ADVANCED + 1 EXPERT';
-    } else {
-      difficultySpread = '1 INTERMEDIATE + 3 ADVANCED + 4 EXPERT';
-    }
+    // Batch generation: 3 calls, 2 challenges each — avoids Groq token limit truncation
+    const batches = [
+      {
+        type: 'CODING',
+        count: 2,
+        instruction: `Generate exactly 2 CODING challenges. One GENERAL_SWE (algorithmic) and one DOMAIN_SPECIFIC (tests concepts from the candidate's tech stack as a pure algorithm).`,
+      },
+      {
+        type: 'TEXT',
+        count: 2,
+        instruction: `Generate exactly 2 challenges: 1 DESIGN challenge (system design problem, type "DESIGN", solutionLanguage "plaintext") and 1 WRITTEN challenge (conceptual/theoretical question, type "WRITTEN", solutionLanguage "plaintext").`,
+      },
+      {
+        type: 'CODING2',
+        count: 2,
+        instruction: `Generate exactly 2 more CODING challenges. Both DOMAIN_SPECIFIC — test different domains from the candidate's stack. Use different languages for each.`,
+      },
+    ];
 
-    const systemPrompt = `You are a senior technical challenge designer creating personalized coding challenges based on a candidate's resume.
+    const difficulty =
+      seniorityLevel === 'entry'
+        ? 'BEGINNER'
+        : seniorityLevel === 'junior'
+          ? 'INTERMEDIATE'
+          : seniorityLevel === 'mid'
+            ? 'ADVANCED'
+            : 'EXPERT';
+
+    const codingRules = `CODING RULES:
+- Solution MUST read from STDIN and write to STDOUT. No external imports/libraries.
+- Description MUST specify EXACT input format, output format, with 2 complete examples.
+- Specify behavior unambiguously: insert = append or prepend, sort = asc or desc, empty input output, separators.
+- Reference solution MUST be COMPLETE runnable code (no "..." placeholders).
+- For JS: use readline pattern. For Python: use sys.stdin. For Rust: use std::io.
+- Keep reference solution under 40 lines. If longer, simplify the problem.`;
+
+    const allChallenges: Array<{
+      title: string;
+      description: string;
+      difficulty: string;
+      type: string;
+      category: string;
+      referenceSolution: string;
+      solutionLanguage: string;
+      domainTag: string;
+    }> = [];
+
+    for (const batch of batches) {
+      try {
+        const systemPrompt = `You are a challenge designer. Generate EXACTLY ${batch.count} challenges as JSON.
 
 RESPONSE FORMAT (JSON only, no markdown):
-{
-  "challenges": [
-    {
-      "title": "Unique, specific challenge title",
-      "description": "Detailed problem description with clear expectations",
-      "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT",
-      "type": "CODING" | "DESIGN" | "WRITTEN" | "MIXED",
-      "category": "GENERAL_SWE" | "DOMAIN_SPECIFIC",
-      "referenceSolution": "Complete solution (code for CODING/MIXED, detailed text for DESIGN/WRITTEN)",
-      "solutionLanguage": "python" | "javascript" | "typescript" | "plaintext" | etc.,
-      "domainTag": "The primary technology/domain this challenge assesses (e.g. 'React', 'Python', 'Node.js', 'System Design', 'SQL')"
+{"challenges": [{"title": "...", "description": "...", "difficulty": "BEGINNER|INTERMEDIATE|ADVANCED|EXPERT", "type": "CODING|DESIGN|WRITTEN", "category": "GENERAL_SWE|DOMAIN_SPECIFIC", "referenceSolution": "...", "solutionLanguage": "python|javascript|typescript|plaintext|etc", "domainTag": "React|Python|etc"}]}
+
+${batch.type !== 'TEXT' ? codingRules : 'DESIGN/WRITTEN: referenceSolution should be a detailed model answer in plain English. solutionLanguage = "plaintext".'}
+
+CRITICAL: Every function in referenceSolution must be FULLY implemented. No placeholders. Output ONLY valid JSON.`;
+
+        const userPrompt = `CANDIDATE: ${seniorityLevel} (${totalYearsExp}yr), stack: ${topDomains.join(', ')}
+DIFFICULTY: mix around ${difficulty} level
+${isMidOrAbove ? 'Test production-level thinking.' : 'Keep approachable but meaningful.'}
+
+${batch.instruction}`;
+
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.6,
+            max_tokens: 4096,
+          }),
+        });
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const jsonStr = content
+          .replace(/```json?\n?/g, '')
+          .replace(/```/g, '')
+          .trim();
+        const parsed = JSON.parse(jsonStr);
+
+        const validLanguages = [
+          'python',
+          'javascript',
+          'typescript',
+          'java',
+          'cpp',
+          'csharp',
+          'go',
+          'rust',
+          'ruby',
+          'php',
+          'kotlin',
+          'swift',
+          'scala',
+          'bash',
+        ];
+        const validTypes = ['CODING', 'DESIGN', 'WRITTEN', 'MIXED'];
+
+        const challenges = (parsed.challenges || []).map(
+          (c: {
+            title: string;
+            description: string;
+            difficulty?: string;
+            type?: string;
+            category?: string;
+            referenceSolution: string;
+            solutionLanguage?: string;
+            domainTag?: string;
+          }) => ({
+            title: c.title,
+            description: c.description,
+            difficulty: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT'].includes(
+              c.difficulty || ''
+            )
+              ? c.difficulty
+              : difficulty,
+            type: validTypes.includes(c.type || '') ? c.type! : 'CODING',
+            category: c.category || 'DOMAIN_SPECIFIC',
+            referenceSolution: c.referenceSolution,
+            solutionLanguage:
+              c.solutionLanguage === 'plaintext'
+                ? 'plaintext'
+                : validLanguages.includes(c.solutionLanguage || '')
+                  ? c.solutionLanguage!
+                  : 'python',
+            domainTag: c.domainTag || 'General',
+          })
+        );
+
+        allChallenges.push(...challenges);
+        this.logger.log(`Batch "${batch.type}": generated ${challenges.length} challenges`);
+      } catch (error) {
+        this.logger.error(`Batch "${batch.type}" failed: ${error}`);
+      }
     }
-  ]
-}
 
-CRITICAL RULES:
-- Generate exactly 6 challenges with this type breakdown:
-  * 3 CODING challenges (type: "CODING") — 1 GENERAL_SWE + 2 DOMAIN_SPECIFIC
-  * 1 DESIGN challenge (type: "DESIGN") — system design / architecture problem. DOMAIN_SPECIFIC.
-  * 1 WRITTEN challenge (type: "WRITTEN") — conceptual/theoretical question. DOMAIN_SPECIFIC.
-  * 1 MIXED challenge (type: "MIXED") — combine coding with explanation. DOMAIN_SPECIFIC.
-- Difficulty spread: ${difficultySpread} (distribute across all types)
-- Each challenge MUST have a UNIQUE title — no duplicates, no generic names
-- CODING challenges: MUST be stdin/stdout programs that run in a sandbox with ZERO external dependencies. This is the most important rule:
-  * NEVER use imports/requires for frameworks or libraries (no express, react, next, fastapi, prisma, mongoose, axios, etc.)
-  * ONLY use the language's standard library
-  * Every solution MUST read input from STDIN and write output to STDOUT. This is how the sandbox tests code.
-  * The description MUST specify the EXACT input format, output format, and behavior for EVERY operation. Leave ZERO ambiguity. Example:
-    "Input: First line contains N (number of intervals). Next N lines each contain two space-separated integers (start end).
-     Output: Print the merged intervals, one per line as 'start end', sorted by start time.
-     Example Input:
-     3
-     1 3
-     2 6
-     8 10
-     Example Output:
-     1 6
-     8 10"
-  * AMBIGUITY RULES — the description must explicitly define:
-    - For data structures: specify if insert means "append to end" or "prepend to front"
-    - For sorting: specify ascending or descending
-    - For edge cases: specify what to output for empty input (empty line? nothing? "empty"?)
-    - For multiple outputs: specify separator (space, newline, comma)
-    - For boolean results: specify exact output format ("true"/"false", "yes"/"no", "1"/"0")
-    - For floating point: specify decimal precision (e.g. "print to 2 decimal places")
-  * Provide AT LEAST 2 complete input/output examples that cover normal AND edge cases
-  * The reference solution's output for the given examples MUST match exactly
-  * The reference solution MUST include a main function that reads from stdin and prints to stdout
-  * For domain-specific CODING: test the CONCEPTS from the domain as algorithmic problems. Examples:
-    - React domain → "Given a JSON representation of two component trees, compute the minimum edit operations to transform tree A into tree B. Input: two JSON objects on separate lines. Output: list of operations."
-    - Express domain → "Given a list of route patterns and a URL, output which route matches. Input: N routes on separate lines, then the URL. Output: the matching route or 'no match'."
-    - Database domain → "Given a nested filter object as JSON, generate the equivalent SQL WHERE clause. Input: JSON string. Output: SQL WHERE clause string."
-    - Rust domain → "Implement a linked list that supports insert, remove, and print operations. Input: commands one per line (insert X, remove X, print). Output: space-separated values on each print command."
-  * Use substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
-  * Every example in the description must show the EXACT stdin input and EXACT stdout output so candidates know the format
-- DESIGN challenges: real-world system design relevant to the candidate's stack. Examples:
-  * "Design a rate-limited API gateway for a microservices architecture"
-  * "Design the database schema and API for a real-time chat system"
-  * "Architect a CI/CD pipeline for a monorepo with multiple services"
-- WRITTEN challenges: deep technical knowledge questions. Examples:
-  * "Explain the tradeoffs between SSR, SSG, and ISR in Next.js"
-  * "Compare event-driven vs request-response architectures for a notification system"
-  * "Describe how you would debug a memory leak in a Node.js production service"
-- MIXED challenges: code + explanation combined. The coding part MUST follow the same stdin/stdout rules as CODING (no imports, exact I/O format, concrete examples). The candidate should write code FIRST, then add their explanation below a "---" separator. Examples:
-  * "Write a program that implements an LRU cache. Input: commands (put key value, get key). Output: value on get or -1 if not found. After the code, explain your eviction strategy and time complexity below a --- separator."
-  * "Write a program that merges two sorted arrays. Input: two lines of space-separated integers. Output: single line of merged sorted integers. Then explain your approach and time complexity below ---."
-- DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
-- For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
-- For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
-- CODING/MIXED reference solutions are THE MOST CRITICAL PART. They MUST be:
-  * COMPLETE — every function implemented, no "..." or "TODO" or placeholders
-  * RUNNABLE — copy-paste into a terminal and it works with zero edits
-  * SELF-CONTAINED — zero imports except the language's built-in I/O (e.g. readline for JS, sys.stdin for Python, std::io for Rust)
-  * STDIN/STDOUT — reads input with the language's standard I/O, prints output with print/console.log/println
-  * FORMAT-MATCHING — the output format of the reference solution MUST exactly match what the description says. If description says "one operation per line", the reference solution must use "\n". If "comma-separated", use ","
-  * For JavaScript: use the readline module pattern: const readline = require('readline'); const rl = readline.createInterface({input: process.stdin}); let lines=[]; rl.on('line', l => lines.push(l)); rl.on('close', () => { /* solve here */ });
-  * For Python: use the sys.stdin pattern: import sys; lines = sys.stdin.read().strip().split('\\n')
-  * NEVER write incomplete functions with "..." or placeholder dots — write the FULL implementation with all logic
-- Each description must clearly state what is expected from the candidate
-- Output ONLY valid JSON`;
-
-    const userPrompt = `CANDIDATE PROFILE:
-- Seniority: ${seniorityLevel} (${totalYearsExp} years experience)
-- Full tech stack: ${topDomains.join(', ')}
-${isMidOrAbove ? '- This is a mid/senior+ candidate — challenges should test production-level thinking, edge cases, and system design awareness' : '- Junior candidate — challenges should be meaningful but approachable, testing real understanding not just syntax'}
-
-Generate 6 unique, personalized challenges across CODING, DESIGN, WRITTEN, and MIXED types. Make every challenge specific to their stack.`;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.6,
-          max_tokens: 16384,
-        }),
-      });
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
-      const jsonStr = content
-        .replace(/```json?\n?/g, '')
-        .replace(/```/g, '')
-        .trim();
-      const parsed = JSON.parse(jsonStr);
-
-      const validLanguages = [
-        'python',
-        'javascript',
-        'typescript',
-        'java',
-        'cpp',
-        'csharp',
-        'go',
-        'rust',
-        'ruby',
-        'php',
-        'kotlin',
-        'swift',
-        'scala',
-        'bash',
-      ];
-
-      const validTypes = ['CODING', 'DESIGN', 'WRITTEN', 'MIXED'];
-
-      return (parsed.challenges || []).map(
-        (c: {
-          title: string;
-          description: string;
-          difficulty?: string;
-          type?: string;
-          category?: string;
-          referenceSolution: string;
-          solutionLanguage?: string;
-          domainTag?: string;
-        }) => ({
-          title: c.title,
-          description: c.description,
-          difficulty: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT'].includes(
-            c.difficulty || ''
-          )
-            ? c.difficulty
-            : 'INTERMEDIATE',
-          type: validTypes.includes(c.type || '') ? c.type! : 'CODING',
-          category: c.category || 'GENERAL_SWE',
-          referenceSolution: c.referenceSolution,
-          solutionLanguage:
-            c.solutionLanguage === 'plaintext'
-              ? 'plaintext'
-              : validLanguages.includes(c.solutionLanguage || '')
-                ? c.solutionLanguage!
-                : 'python',
-          domainTag: c.domainTag || 'General',
-        })
-      );
-    } catch (error) {
-      this.logger.error(`Challenge generation from resume failed: ${error}`);
-      return [];
-    }
+    this.logger.log(`Total challenges generated: ${allChallenges.length}`);
+    return allChallenges;
   }
 }
