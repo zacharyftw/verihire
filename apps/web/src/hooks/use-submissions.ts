@@ -19,9 +19,17 @@ function buildQuery(filters: SubmissionFilters) {
 }
 
 export function useMySubmissions(filters: SubmissionFilters = {}) {
-  return useSWR<{ items: Submission[]; pagination: { total: number } }>(
-    `/submissions/my${buildQuery(filters)}`
-  );
+  // api.get() auto-unwraps data.data, so SWR receives the array directly
+  const result = useSWR<Submission[]>(`/submissions/my${buildQuery(filters)}`);
+
+  const normalized = result.data
+    ? {
+        items: Array.isArray(result.data) ? result.data : [],
+        pagination: { total: Array.isArray(result.data) ? result.data.length : 0 },
+      }
+    : undefined;
+
+  return { ...result, data: normalized };
 }
 
 export function useSubmission(id: string | undefined) {
