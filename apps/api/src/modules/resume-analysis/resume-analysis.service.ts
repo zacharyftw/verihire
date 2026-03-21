@@ -376,11 +376,18 @@ CRITICAL RULES:
   * 2 MIXED challenges (type: "MIXED") — combine coding with explanation. Ask the candidate to implement something AND explain their design decisions, tradeoffs, or complexity analysis. One GENERAL_SWE + one DOMAIN_SPECIFIC.
 - Difficulty spread: ${difficultySpread} (distribute across all types)
 - Each challenge MUST have a UNIQUE title — no duplicates, no generic names
-- CODING challenges: MUST be self-contained, concrete problems — NOT vague prompts like "you are given a program, optimize it". Every CODING challenge MUST:
-  * State the EXACT function signature the candidate must implement (e.g. "Write a function called mergeIntervals(intervals: number[][]): number[][]")
+- CODING challenges: MUST be PURE FUNCTIONS that run in a sandbox with ZERO external dependencies. This is the most important rule:
+  * NEVER use imports/requires for frameworks or libraries (no express, react, next, fastapi, prisma, mongoose, axios, etc.)
+  * ONLY use the language's standard library (built-in modules like Math, Array, Map, Set, JSON, etc.)
+  * Every solution must be a PURE FUNCTION: takes input parameters, returns output. No servers, no HTTP, no database connections, no file system
+  * State the EXACT function signature (e.g. "Write a function called mergeIntervals(intervals: number[][]): number[][]")
   * Provide 2-3 concrete input/output examples (e.g. "Input: [[1,3],[2,6],[8,10]] → Output: [[1,6],[8,10]]")
-  * If the problem involves starter code or existing code to refactor, INCLUDE the full starter code in the description
-  * Never say "you are given X" without actually providing X
+  * The function must be testable: given specific inputs, it produces a deterministic output
+  * For domain-specific CODING: test the CONCEPTS from the domain as pure functions. Examples:
+    - React domain → "Write a function that computes a virtual DOM diff between two trees" (NOT "Build a React component")
+    - Express domain → "Write a function that parses route patterns and matches URLs" (NOT "Build an Express middleware")
+    - SQL domain → "Write a function that converts a nested object into a SQL WHERE clause string" (NOT "Run a SQL query")
+    - Prisma domain → "Write a function that resolves circular references in a relation graph" (NOT "Write a Prisma query")
   * Use substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
 - DESIGN challenges: real-world system design relevant to the candidate's stack. Examples:
   * "Design a rate-limited API gateway for a microservices architecture"
@@ -390,13 +397,13 @@ CRITICAL RULES:
   * "Explain the tradeoffs between SSR, SSG, and ISR in Next.js"
   * "Compare event-driven vs request-response architectures for a notification system"
   * "Describe how you would debug a memory leak in a Node.js production service"
-- MIXED challenges: code + explanation combined. The coding part MUST follow the same rules as CODING (exact function signature, concrete examples, full starter code if needed). Additionally ask the candidate to explain their design decisions, tradeoffs, or time/space complexity. Examples:
-  * "Implement an LRU cache with get/put methods (provide signature + examples), then explain your eviction strategy and time complexity"
-  * "Given this database schema (provide it), write a migration to add soft deletes, then explain how you'd handle rollbacks in production"
+- MIXED challenges: code + explanation combined. The coding part MUST follow the same PURE FUNCTION rules as CODING (no imports, exact function signature, concrete examples). Additionally ask the candidate to explain their design decisions, tradeoffs, or time/space complexity. Examples:
+  * "Implement an LRU cache class with get(key)/put(key, value) methods using only built-in data structures, then explain your eviction strategy and time complexity"
+  * "Write a function that merges two sorted arrays with O(n) time complexity, then explain why your approach is optimal"
 - DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
 - For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
 - For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
-- CODING reference solutions must be COMPLETE, RUNNABLE, self-contained code
+- CODING/MIXED reference solutions must be COMPLETE, RUNNABLE, self-contained code with ZERO imports/requires. The solution must run as-is in a bare language runtime (Node.js, Python, etc.) with no packages installed
 - Each description must clearly state what is expected from the candidate
 - Output ONLY valid JSON`;
 
