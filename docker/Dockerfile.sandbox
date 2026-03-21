@@ -1,0 +1,162 @@
+# VeriHire Code Execution Sandbox — Tier 4 (Full Coverage)
+# Pre-installs languages, frameworks, and packages for domain-specific challenges
+
+FROM debian:bookworm-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.cargo/bin:/usr/local/go/bin:$PATH"
+
+# ============================================================
+# System dependencies
+# ============================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl wget git ca-certificates gnupg build-essential \
+    gcc g++ make cmake \
+    sqlite3 jq \
+    # Python
+    python3 python3-pip python3-venv python3-dev \
+    # Ruby
+    ruby ruby-dev \
+    # PHP
+    php-cli php-mbstring php-xml php-curl \
+    # Perl
+    perl \
+    # Lua
+    lua5.4 \
+    # R
+    r-base-core \
+    # Erlang + Elixir deps
+    erlang-base erlang-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Node.js 20 LTS
+# ============================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Java 17 (OpenJDK)
+# ============================================================
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Go 1.21
+# ============================================================
+RUN wget -q https://go.dev/dl/go1.21.13.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.21.13.linux-amd64.tar.gz \
+    && rm go1.21.13.linux-amd64.tar.gz
+
+# ============================================================
+# Rust (stable)
+# ============================================================
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+
+# ============================================================
+# Kotlin
+# ============================================================
+RUN curl -sSL https://github.com/JetBrains/kotlin/releases/download/v2.0.0/kotlin-compiler-2.0.0.zip -o kotlin.zip \
+    && apt-get update && apt-get install -y unzip && rm -rf /var/lib/apt/lists/* \
+    && unzip -q kotlin.zip -d /opt && rm kotlin.zip \
+    && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
+    && ln -s /opt/kotlinc/bin/kotlin /usr/local/bin/kotlin
+
+# ============================================================
+# Scala
+# ============================================================
+RUN curl -sSL https://github.com/scala/scala3/releases/download/3.4.2/scala3-3.4.2.tar.gz -o scala.tar.gz \
+    && tar -xzf scala.tar.gz -C /opt && rm scala.tar.gz \
+    && ln -s /opt/scala3-3.4.2/bin/scala /usr/local/bin/scala \
+    && ln -s /opt/scala3-3.4.2/bin/scalac /usr/local/bin/scalac
+
+# ============================================================
+# Elixir
+# ============================================================
+RUN apt-get update && apt-get install -y --no-install-recommends elixir && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Haskell (GHC)
+# ============================================================
+RUN apt-get update && apt-get install -y --no-install-recommends ghc && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# C# (.NET 8)
+# ============================================================
+RUN wget -q https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
+    && chmod +x dotnet-install.sh \
+    && ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+    && rm dotnet-install.sh
+ENV DOTNET_ROOT=/usr/share/dotnet
+
+# ============================================================
+# TypeScript (global)
+# ============================================================
+RUN npm install -g typescript tsx ts-node
+
+# ============================================================
+# Node.js packages (frameworks + libraries)
+# ============================================================
+RUN mkdir -p /sandbox/node && cd /sandbox/node && npm init -y && npm install \
+    # Web frameworks
+    express fastify hono koa \
+    # Frontend
+    react react-dom next \
+    # GraphQL
+    graphql apollo-server-express \
+    # ORM + DB
+    prisma @prisma/client mongoose pg mysql2 redis ioredis sequelize \
+    # Utilities
+    axios lodash zod joi dayjs uuid nanoid \
+    # Testing
+    jest mocha chai \
+    # Auth
+    jsonwebtoken bcrypt \
+    # Validation
+    class-validator class-transformer \
+    # Vue + Svelte (for import challenges)
+    vue svelte \
+    # Angular core
+    @angular/core @angular/common rxjs \
+    2>/dev/null || true
+ENV NODE_PATH=/sandbox/node/node_modules
+
+# ============================================================
+# Python packages (frameworks + libraries)
+# ============================================================
+RUN pip3 install --break-system-packages --no-cache-dir \
+    # Web frameworks
+    fastapi uvicorn flask django starlette \
+    # HTTP
+    requests httpx aiohttp \
+    # Data science
+    numpy pandas scipy matplotlib \
+    # ORM + DB
+    sqlalchemy pymongo redis psycopg2-binary \
+    # Validation
+    pydantic marshmallow \
+    # Testing
+    pytest pytest-asyncio \
+    # Scraping
+    beautifulsoup4 scrapy lxml \
+    # Image
+    pillow \
+    # Auth + Crypto
+    pyjwt bcrypt cryptography \
+    # Async
+    celery \
+    # CLI
+    click typer rich \
+    # ML (lightweight only — skip tensorflow/torch for size)
+    scikit-learn \
+    2>/dev/null || true
+
+# ============================================================
+# Cleanup
+# ============================================================
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Working directory for code execution
+WORKDIR /code
