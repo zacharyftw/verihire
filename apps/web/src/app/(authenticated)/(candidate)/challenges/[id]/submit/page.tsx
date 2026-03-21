@@ -205,15 +205,21 @@ export default function SubmitChallengePage() {
   const hasUserEdited = useRef(false);
   const lastGeneratedCode = useRef<string>('');
 
-  // Filter languages based on challenge's supportedLanguages
+  // Lock language to the challenge's solution language
   const availableLanguages = useMemo(() => {
-    const supported = challenge?.supportedLanguages as string[] | null | undefined;
-    if (supported && Array.isArray(supported) && supported.length > 0) {
-      const filtered = ALL_LANGUAGES.filter(l => supported.includes(l.value));
-      return filtered.length > 0 ? filtered : ALL_LANGUAGES;
+    const solutionLang = challenge?.solutionLanguage;
+    if (solutionLang) {
+      const match = ALL_LANGUAGES.find(l => l.value === solutionLang);
+      if (match) return [match];
+      return [
+        {
+          value: solutionLang,
+          label: solutionLang.charAt(0).toUpperCase() + solutionLang.slice(1),
+        },
+      ];
     }
     return ALL_LANGUAGES;
-  }, [challenge?.supportedLanguages]);
+  }, [challenge?.solutionLanguage]);
 
   // Initialize code from active submission or starter code
   useEffect(() => {

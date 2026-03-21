@@ -130,6 +130,7 @@ export interface Challenge {
   type: ChallengeType | null;
   category: ChallengeCategory;
   supportedLanguages: string[] | null;
+  solutionLanguage: string | null;
   timeLimitMinutes: number | null;
   evaluationCriteria: Record<string, unknown> | null;
   timesAttempted: number;
