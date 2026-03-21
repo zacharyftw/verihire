@@ -353,26 +353,40 @@ export class EvaluationsService {
 
           if (allTestCases.length > 0) {
             overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
+            criteriaScores = {
+              correctness: {
+                score: Math.round(accuracyScore),
+                maxScore: 100,
+                feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
+              },
+              code_quality: {
+                score: codeQualityScore,
+                maxScore: 100,
+                feedback:
+                  codeQualityNotes || 'Code quality analysis based on structure and patterns.',
+              },
+            };
+            feedback = codeFeedback;
+            suggestions = codeSuggestions;
+            confidence = 0.85;
           } else {
-            overallScore = Math.round(codeQualityScore * 0.5); // Lower confidence without test cases
+            // No test cases generated — use LLM text evaluation instead of scoring 0
+            this.logger.log(
+              'No test cases available for CODING challenge, using LLM text evaluation'
+            );
+            const textResult = await this.testCaseGenerator.evaluateTextSubmission({
+              challengeTitle: submission.challenge.title,
+              challengeDescription: submission.challenge.description,
+              candidateAnswer: code,
+              referenceSolution: submission.challenge.referenceSolution || '',
+              challengeType: 'CODING',
+            });
+            overallScore = textResult.overallScore;
+            criteriaScores = textResult.criteriaScores;
+            feedback = textResult.feedback;
+            suggestions = textResult.suggestions;
+            confidence = 0.7;
           }
-
-          criteriaScores = {
-            correctness: {
-              score: Math.round(accuracyScore),
-              maxScore: 100,
-              feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
-            },
-            code_quality: {
-              score: codeQualityScore,
-              maxScore: 100,
-              feedback:
-                codeQualityNotes || 'Code quality analysis based on structure and patterns.',
-            },
-          };
-          feedback = codeFeedback;
-          suggestions = codeSuggestions;
-          confidence = allTestCases.length > 0 ? 0.85 : 0.5;
           testResultsData = {
             totalTests: executionResults.totalTests,
             passed: executionResults.passed,
