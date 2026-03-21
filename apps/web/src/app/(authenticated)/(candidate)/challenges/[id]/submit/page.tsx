@@ -179,8 +179,15 @@ const ALL_LANGUAGES = [
   { value: 'python', label: 'Python' },
   { value: 'java', label: 'Java' },
   { value: 'cpp', label: 'C++' },
+  { value: 'csharp', label: 'C#' },
   { value: 'go', label: 'Go' },
   { value: 'rust', label: 'Rust' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'php', label: 'PHP' },
+  { value: 'kotlin', label: 'Kotlin' },
+  { value: 'swift', label: 'Swift' },
+  { value: 'scala', label: 'Scala' },
+  { value: 'bash', label: 'Bash' },
 ];
 
 export default function SubmitChallengePage() {
