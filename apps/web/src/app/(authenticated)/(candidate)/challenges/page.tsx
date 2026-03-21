@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Code2, Clock, Users } from 'lucide-react';
+import { Code2, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -111,9 +111,6 @@ export default function ChallengesPage() {
                 <CardDescription>{challenge.skill?.name || 'General'}</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
-                  {challenge.description}
-                </p>
                 <div className="flex items-center justify-between">
                   <div className="flex gap-3 text-xs text-muted-foreground">
                     {challenge.timeLimitMinutes && (
@@ -122,13 +119,14 @@ export default function ChallengesPage() {
                         {challenge.timeLimitMinutes}min
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      {challenge.timesAttempted || 0} attempts
-                    </span>
+                    {challenge.type && (
+                      <span className="flex items-center gap-1">
+                        {challenge.type.charAt(0) + challenge.type.slice(1).toLowerCase()}
+                      </span>
+                    )}
                   </div>
                   <Button size="sm" asChild>
-                    <Link href={ROUTES.challengeDetail(challenge.id)}>View</Link>
+                    <Link href={ROUTES.challengeSubmit(challenge.id)}>Start</Link>
                   </Button>
                 </div>
               </CardContent>
