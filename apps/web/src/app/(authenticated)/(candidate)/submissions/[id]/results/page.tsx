@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
@@ -27,6 +28,16 @@ export default function SubmissionResultsPage() {
   const isPassing = displayScore != null && displayScore >= 70;
   const isWaiting = ['SUBMITTED', 'EVALUATING'].includes(submission.status);
   const hasResults = displayScore != null;
+
+  // Parse criteria scores
+  const criteriaScores = evaluation?.criteriaScores || {};
+  const criteriaEntries = Object.entries(criteriaScores) as [
+    string,
+    { score: number; maxScore: number; feedback?: string },
+  ][];
+
+  // Parse suggestions
+  const suggestions: string[] = evaluation?.suggestions || [];
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -60,7 +71,7 @@ export default function SubmissionResultsPage() {
               <div>
                 <h3 className="text-lg font-semibold">Your submission is being evaluated</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Our AI is analyzing your code for correctness, quality, and performance.
+                  Our AI is analyzing your submission for correctness, quality, and depth.
                   <br />
                   This usually takes a few moments.
                 </p>
@@ -69,7 +80,7 @@ export default function SubmissionResultsPage() {
                 <Progress value={submission.status === 'EVALUATING' ? 60 : 30} className="h-2" />
                 <p className="mt-2 text-xs text-muted-foreground">
                   {submission.status === 'EVALUATING'
-                    ? 'Analyzing your code...'
+                    ? 'Analyzing your submission...'
                     : 'Queued for evaluation...'}
                 </p>
               </div>
@@ -94,6 +105,7 @@ export default function SubmissionResultsPage() {
 
           {hasResults && (
             <>
+              {/* Overall Score */}
               <div className="text-center">
                 <div
                   className={`inline-flex items-center gap-2 rounded-full px-4 py-2 ${isPassing ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
@@ -108,14 +120,43 @@ export default function SubmissionResultsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <ScoreCard label="AI Score" score={submission.aiScore} />
-                <ScoreCard label="Peer Score" score={submission.peerScore} />
-                <ScoreCard label="Percentile" score={submission.percentile} suffix="th" />
-              </div>
+              {/* Criteria Breakdown */}
+              {criteriaEntries.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="mb-3 font-medium">Score Breakdown</h3>
+                    <div className="space-y-3">
+                      {criteriaEntries.map(([key, val]) => (
+                        <div key={key} className="rounded-lg border p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium capitalize">
+                              {key
+                                .replace(/_/g, ' ')
+                                .replace(/([A-Z])/g, ' $1')
+                                .trim()}
+                            </span>
+                            <Badge variant="secondary">
+                              {val.score}/{val.maxScore}
+                            </Badge>
+                          </div>
+                          <Progress
+                            value={(val.score / val.maxScore) * 100}
+                            className="mt-2 h-1.5"
+                          />
+                          {val.feedback && (
+                            <p className="mt-2 text-xs text-muted-foreground">{val.feedback}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           )}
 
+          {/* Feedback */}
           {evaluation?.feedback && (
             <>
               <Separator />
@@ -128,25 +169,15 @@ export default function SubmissionResultsPage() {
             </>
           )}
 
-          {evaluation?.strengths && (
+          {/* Suggestions */}
+          {suggestions.length > 0 && (
             <div>
-              <h3 className="mb-2 font-medium">Strengths</h3>
-              <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {Array.isArray(evaluation.strengths)
-                  ? evaluation.strengths.join('\n')
-                  : evaluation.strengths}
-              </div>
-            </div>
-          )}
-
-          {evaluation?.improvements && (
-            <div>
-              <h3 className="mb-2 font-medium">Areas for Improvement</h3>
-              <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {Array.isArray(evaluation.improvements)
-                  ? evaluation.improvements.join('\n')
-                  : evaluation.improvements}
-              </div>
+              <h3 className="mb-2 font-medium">Suggestions for Improvement</h3>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                {suggestions.map((s: string, i: number) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -162,26 +193,6 @@ export default function SubmissionResultsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function ScoreCard({
-  label,
-  score,
-  suffix = '%',
-}: {
-  label: string;
-  score?: number | null;
-  suffix?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-4 text-center">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold">
-        {score != null ? `${Math.round(score)}${suffix}` : '—'}
-      </p>
-      {score != null && <Progress value={score} className="mt-2 h-2" />}
     </div>
   );
 }
