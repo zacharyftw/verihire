@@ -376,19 +376,29 @@ CRITICAL RULES:
   * 2 MIXED challenges (type: "MIXED") — combine coding with explanation. Ask the candidate to implement something AND explain their design decisions, tradeoffs, or complexity analysis. One GENERAL_SWE + one DOMAIN_SPECIFIC.
 - Difficulty spread: ${difficultySpread} (distribute across all types)
 - Each challenge MUST have a UNIQUE title — no duplicates, no generic names
-- CODING challenges: MUST be PURE FUNCTIONS that run in a sandbox with ZERO external dependencies. This is the most important rule:
+- CODING challenges: MUST be stdin/stdout programs that run in a sandbox with ZERO external dependencies. This is the most important rule:
   * NEVER use imports/requires for frameworks or libraries (no express, react, next, fastapi, prisma, mongoose, axios, etc.)
-  * ONLY use the language's standard library (built-in modules like Math, Array, Map, Set, JSON, etc.)
-  * Every solution must be a PURE FUNCTION: takes input parameters, returns output. No servers, no HTTP, no database connections, no file system
-  * State the EXACT function signature (e.g. "Write a function called mergeIntervals(intervals: number[][]): number[][]")
-  * Provide 2-3 concrete input/output examples (e.g. "Input: [[1,3],[2,6],[8,10]] → Output: [[1,6],[8,10]]")
-  * The function must be testable: given specific inputs, it produces a deterministic output
-  * For domain-specific CODING: test the CONCEPTS from the domain as pure functions. Examples:
-    - React domain → "Write a function that computes a virtual DOM diff between two trees" (NOT "Build a React component")
-    - Express domain → "Write a function that parses route patterns and matches URLs" (NOT "Build an Express middleware")
-    - SQL domain → "Write a function that converts a nested object into a SQL WHERE clause string" (NOT "Run a SQL query")
-    - Prisma domain → "Write a function that resolves circular references in a relation graph" (NOT "Write a Prisma query")
+  * ONLY use the language's standard library
+  * Every solution MUST read input from STDIN and write output to STDOUT. This is how the sandbox tests code.
+  * The description MUST specify the EXACT input format and output format. Example:
+    "Input: First line contains N (number of intervals). Next N lines each contain two space-separated integers (start end).
+     Output: Print the merged intervals, one per line as 'start end', sorted by start time.
+     Example Input:
+     3
+     1 3
+     2 6
+     8 10
+     Example Output:
+     1 6
+     8 10"
+  * The reference solution MUST include a main function that reads from stdin and prints to stdout
+  * For domain-specific CODING: test the CONCEPTS from the domain as algorithmic problems. Examples:
+    - React domain → "Given a JSON representation of two component trees, compute the minimum edit operations to transform tree A into tree B. Input: two JSON objects on separate lines. Output: list of operations."
+    - Express domain → "Given a list of route patterns and a URL, output which route matches. Input: N routes on separate lines, then the URL. Output: the matching route or 'no match'."
+    - Database domain → "Given a nested filter object as JSON, generate the equivalent SQL WHERE clause. Input: JSON string. Output: SQL WHERE clause string."
+    - Rust domain → "Implement a linked list that supports insert, remove, and print operations. Input: commands one per line (insert X, remove X, print). Output: space-separated values on each print command."
   * Use substantial problems (hash maps, graphs, trees, DP, sliding window, etc.) — NOT trivial one-liners
+  * Every example in the description must show the EXACT stdin input and EXACT stdout output so candidates know the format
 - DESIGN challenges: real-world system design relevant to the candidate's stack. Examples:
   * "Design a rate-limited API gateway for a microservices architecture"
   * "Design the database schema and API for a real-time chat system"
@@ -397,13 +407,13 @@ CRITICAL RULES:
   * "Explain the tradeoffs between SSR, SSG, and ISR in Next.js"
   * "Compare event-driven vs request-response architectures for a notification system"
   * "Describe how you would debug a memory leak in a Node.js production service"
-- MIXED challenges: code + explanation combined. The coding part MUST follow the same PURE FUNCTION rules as CODING (no imports, exact function signature, concrete examples). Additionally ask the candidate to explain their design decisions, tradeoffs, or time/space complexity. Examples:
-  * "Implement an LRU cache class with get(key)/put(key, value) methods using only built-in data structures, then explain your eviction strategy and time complexity"
-  * "Write a function that merges two sorted arrays with O(n) time complexity, then explain why your approach is optimal"
+- MIXED challenges: code + explanation combined. The coding part MUST follow the same stdin/stdout rules as CODING (no imports, exact I/O format, concrete examples). The candidate should write code FIRST, then add their explanation below a "---" separator. Examples:
+  * "Write a program that implements an LRU cache. Input: commands (put key value, get key). Output: value on get or -1 if not found. After the code, explain your eviction strategy and time complexity below a --- separator."
+  * "Write a program that merges two sorted arrays. Input: two lines of space-separated integers. Output: single line of merged sorted integers. Then explain your approach and time complexity below ---."
 - DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
 - For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
 - For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
-- CODING/MIXED reference solutions must be COMPLETE, RUNNABLE, self-contained code with ZERO imports/requires. The solution must run as-is in a bare language runtime (Node.js, Python, etc.) with no packages installed
+- CODING/MIXED reference solutions must be COMPLETE, RUNNABLE programs that read from STDIN and write to STDOUT with ZERO imports/requires. The solution must run as-is in a bare language runtime. It MUST include a main function or entry point that handles I/O. Example for JavaScript: process.stdin reads input, console.log writes output. Example for Python: input() reads, print() writes. Example for Rust: std::io::stdin().read_line() reads, println!() writes
 - Each description must clearly state what is expected from the candidate
 - Output ONLY valid JSON`;
 
