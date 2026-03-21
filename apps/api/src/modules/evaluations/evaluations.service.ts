@@ -412,11 +412,13 @@ export class EvaluationsService {
       });
 
       // 11. Update submission status and score
+      // Set finalScore = aiScore when no peer review is pending
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
           status: 'EVALUATED',
           aiScore: overallScore,
+          finalScore: overallScore,
         },
       });
 
