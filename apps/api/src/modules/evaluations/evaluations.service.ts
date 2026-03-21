@@ -213,24 +213,28 @@ export class EvaluationsService {
 
               const validatedTestCases: GeneratedTestCase[] = [];
               for (let i = 0; i < generatedTestCases.length; i++) {
-                if (i >= refResults.results.length) break; // bounds check
+                if (i >= refResults.results.length) break;
                 const refResult = refResults.results[i];
                 if (refResult && refResult.actualOutput != null && !refResult.error) {
                   validatedTestCases.push({
                     ...generatedTestCases[i],
                     expectedOutput: refResult.actualOutput,
                   });
-                } else {
-                  this.logger.warn(
-                    `Dropping test case "${generatedTestCases[i].description}" — reference solution failed or produced no output`
-                  );
                 }
               }
 
-              this.logger.log(
-                `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
-              );
-              generatedTestCases = validatedTestCases;
+              if (validatedTestCases.length > 0) {
+                this.logger.log(
+                  `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
+                );
+                generatedTestCases = validatedTestCases;
+              } else {
+                // Reference solution failed on ALL test cases (likely import/dependency issue)
+                // Keep the original LLM-generated test cases instead of dropping everything
+                this.logger.warn(
+                  `Reference solution failed on all ${generatedTestCases.length} test cases — using LLM-generated expected outputs instead`
+                );
+              }
             } catch (refError) {
               this.logger.warn(
                 `Judge0 unavailable for reference validation, using LLM-generated expected outputs: ${refError}`
@@ -809,15 +813,20 @@ export class EvaluationsService {
               name: tc.description,
             })),
           });
-          generatedTestCases = generatedTestCases.filter((tc, i) => {
-            if (i >= refResults.results.length) return false; // bounds check
+          const validatedCount = generatedTestCases.filter((tc, i) => {
+            if (i >= refResults.results.length) return false;
             const r = refResults.results[i];
             if (r && r.actualOutput != null && !r.error) {
               tc.expectedOutput = r.actualOutput;
               return true;
             }
             return false;
-          });
+          }).length;
+          if (validatedCount === 0) {
+            this.logger.warn(
+              'Reference solution failed on all test cases in MIXED evaluation — keeping LLM-generated expected outputs'
+            );
+          }
         } catch (refError) {
           this.logger.warn(
             `Judge0 unavailable for reference validation in MIXED evaluation, using LLM-generated expected outputs: ${refError}`
