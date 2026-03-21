@@ -276,7 +276,25 @@ export default function SubmitChallengePage() {
     };
   }, [autoSave]);
 
-  if (challengeLoading || subLoading) return <PageLoader />;
+  // Auto-start submission if none exists
+  const [autoStarting, setAutoStarting] = useState(false);
+  const autoStarted = useRef(false);
+
+  useEffect(() => {
+    if (challengeLoading || subLoading || activeSubmission || autoStarted.current) return;
+    autoStarted.current = true;
+    setAutoStarting(true);
+    startSubmission(id)
+      .then(() => {
+        // SWR will refetch activeSubmission automatically
+        window.location.reload();
+      })
+      .catch(() => {
+        setAutoStarting(false);
+      });
+  }, [challengeLoading, subLoading, activeSubmission, id]);
+
+  if (challengeLoading || subLoading || autoStarting) return <PageLoader />;
 
   async function handleSave() {
     if (!activeSubmission?.id) return;
