@@ -422,7 +422,15 @@ CRITICAL RULES:
 - DOMAIN_SPECIFIC challenges must use the candidate's ACTUAL tech stack — not generic
 - For CODING/MIXED: solutionLanguage MUST be one of: "python", "javascript", "typescript", "java", "cpp", "csharp", "go", "rust", "ruby", "php", "kotlin", "swift", "scala", "bash"
 - For DESIGN/WRITTEN: solutionLanguage should be "plaintext" and referenceSolution should be a detailed model answer in plain English
-- CODING/MIXED reference solutions must be COMPLETE, RUNNABLE programs that read from STDIN and write to STDOUT with ZERO imports/requires. The solution must run as-is in a bare language runtime. It MUST include a main function or entry point that handles I/O. Example for JavaScript: process.stdin reads input, console.log writes output. Example for Python: input() reads, print() writes. Example for Rust: std::io::stdin().read_line() reads, println!() writes
+- CODING/MIXED reference solutions are THE MOST CRITICAL PART. They MUST be:
+  * COMPLETE — every function implemented, no "..." or "TODO" or placeholders
+  * RUNNABLE — copy-paste into a terminal and it works with zero edits
+  * SELF-CONTAINED — zero imports except the language's built-in I/O (e.g. readline for JS, sys.stdin for Python, std::io for Rust)
+  * STDIN/STDOUT — reads input with the language's standard I/O, prints output with print/console.log/println
+  * FORMAT-MATCHING — the output format of the reference solution MUST exactly match what the description says. If description says "one operation per line", the reference solution must use "\n". If "comma-separated", use ","
+  * For JavaScript: use the readline module pattern: const readline = require('readline'); const rl = readline.createInterface({input: process.stdin}); let lines=[]; rl.on('line', l => lines.push(l)); rl.on('close', () => { /* solve here */ });
+  * For Python: use the sys.stdin pattern: import sys; lines = sys.stdin.read().strip().split('\\n')
+  * NEVER write incomplete functions with "..." or placeholder dots — write the FULL implementation with all logic
 - Each description must clearly state what is expected from the candidate
 - Output ONLY valid JSON`;
 
