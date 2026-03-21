@@ -369,11 +369,11 @@ RESPONSE FORMAT (JSON only, no markdown):
 }
 
 CRITICAL RULES:
-- Generate exactly 10 challenges with this type breakdown:
-  * 4 CODING challenges (type: "CODING") — 2 GENERAL_SWE + 2 DOMAIN_SPECIFIC
-  * 2 DESIGN challenges (type: "DESIGN") — system design / architecture problems. Ask the candidate to describe or diagram an architecture, design an API, or plan a system. These are DOMAIN_SPECIFIC.
-  * 2 WRITTEN challenges (type: "WRITTEN") — conceptual/theoretical questions. Ask the candidate to explain tradeoffs, compare approaches, debug a scenario, or write technical documentation. These are DOMAIN_SPECIFIC.
-  * 2 MIXED challenges (type: "MIXED") — combine coding with explanation. Ask the candidate to implement something AND explain their design decisions, tradeoffs, or complexity analysis. One GENERAL_SWE + one DOMAIN_SPECIFIC.
+- Generate exactly 6 challenges with this type breakdown:
+  * 3 CODING challenges (type: "CODING") — 1 GENERAL_SWE + 2 DOMAIN_SPECIFIC
+  * 1 DESIGN challenge (type: "DESIGN") — system design / architecture problem. DOMAIN_SPECIFIC.
+  * 1 WRITTEN challenge (type: "WRITTEN") — conceptual/theoretical question. DOMAIN_SPECIFIC.
+  * 1 MIXED challenge (type: "MIXED") — combine coding with explanation. DOMAIN_SPECIFIC.
 - Difficulty spread: ${difficultySpread} (distribute across all types)
 - Each challenge MUST have a UNIQUE title — no duplicates, no generic names
 - CODING challenges: MUST be stdin/stdout programs that run in a sandbox with ZERO external dependencies. This is the most important rule:
@@ -431,7 +431,7 @@ CRITICAL RULES:
 - Full tech stack: ${topDomains.join(', ')}
 ${isMidOrAbove ? '- This is a mid/senior+ candidate — challenges should test production-level thinking, edge cases, and system design awareness' : '- Junior candidate — challenges should be meaningful but approachable, testing real understanding not just syntax'}
 
-Generate 10 unique, personalized challenges across CODING, DESIGN, WRITTEN, and MIXED types. Make every challenge specific to their stack.`;
+Generate 6 unique, personalized challenges across CODING, DESIGN, WRITTEN, and MIXED types. Make every challenge specific to their stack.`;
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -447,7 +447,7 @@ Generate 10 unique, personalized challenges across CODING, DESIGN, WRITTEN, and 
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.6,
-          max_tokens: 8192,
+          max_tokens: 16384,
         }),
       });
 
