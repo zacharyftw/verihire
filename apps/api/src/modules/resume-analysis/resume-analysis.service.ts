@@ -380,7 +380,7 @@ CRITICAL RULES:
   * NEVER use imports/requires for frameworks or libraries (no express, react, next, fastapi, prisma, mongoose, axios, etc.)
   * ONLY use the language's standard library
   * Every solution MUST read input from STDIN and write output to STDOUT. This is how the sandbox tests code.
-  * The description MUST specify the EXACT input format and output format. Example:
+  * The description MUST specify the EXACT input format, output format, and behavior for EVERY operation. Leave ZERO ambiguity. Example:
     "Input: First line contains N (number of intervals). Next N lines each contain two space-separated integers (start end).
      Output: Print the merged intervals, one per line as 'start end', sorted by start time.
      Example Input:
@@ -391,6 +391,15 @@ CRITICAL RULES:
      Example Output:
      1 6
      8 10"
+  * AMBIGUITY RULES — the description must explicitly define:
+    - For data structures: specify if insert means "append to end" or "prepend to front"
+    - For sorting: specify ascending or descending
+    - For edge cases: specify what to output for empty input (empty line? nothing? "empty"?)
+    - For multiple outputs: specify separator (space, newline, comma)
+    - For boolean results: specify exact output format ("true"/"false", "yes"/"no", "1"/"0")
+    - For floating point: specify decimal precision (e.g. "print to 2 decimal places")
+  * Provide AT LEAST 2 complete input/output examples that cover normal AND edge cases
+  * The reference solution's output for the given examples MUST match exactly
   * The reference solution MUST include a main function that reads from stdin and prints to stdout
   * For domain-specific CODING: test the CONCEPTS from the domain as algorithmic problems. Examples:
     - React domain → "Given a JSON representation of two component trees, compute the minimum edit operations to transform tree A into tree B. Input: two JSON objects on separate lines. Output: list of operations."
