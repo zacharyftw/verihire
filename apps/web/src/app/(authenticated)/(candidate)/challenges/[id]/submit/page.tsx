@@ -221,6 +221,109 @@ export default function SubmitChallengePage() {
     return ALL_LANGUAGES;
   }, [challenge?.solutionLanguage]);
 
+  // Generate stdin boilerplate for languages that need it
+  function getStarterTemplate(lang: string): string {
+    const templates: Record<string, string> = {
+      javascript: `const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin });
+let lines = [];
+rl.on('line', l => lines.push(l));
+rl.on('close', () => {
+  // Your solution here
+  // lines[0], lines[1], etc. contain each line of input
+
+  console.log("output here");
+});
+`,
+      typescript: `import * as readline from 'readline';
+const rl = readline.createInterface({ input: process.stdin });
+let lines: string[] = [];
+rl.on('line', (l: string) => lines.push(l));
+rl.on('close', () => {
+  // Your solution here
+
+  console.log("output here");
+});
+`,
+      python: `import sys
+
+lines = sys.stdin.read().strip().split('\\n')
+
+# Your solution here
+# lines[0], lines[1], etc. contain each line of input
+
+print("output here")
+`,
+      java: `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        // Your solution here
+        // String line = sc.nextLine();
+
+        System.out.println("output here");
+    }
+}
+`,
+      cpp: `#include <iostream>
+#include <string>
+using namespace std;
+
+int main() {
+    string line;
+    // Your solution here
+    // getline(cin, line);
+
+    cout << "output here" << endl;
+    return 0;
+}
+`,
+      go: `package main
+
+import (
+    "bufio"
+    "fmt"
+    "os"
+)
+
+func main() {
+    scanner := bufio.NewScanner(os.Stdin)
+    // Your solution here
+    // scanner.Scan(); line := scanner.Text()
+    _ = scanner
+
+    fmt.Println("output here")
+}
+`,
+      rust: `use std::io::{self, BufRead};
+
+fn main() {
+    let stdin = io::stdin();
+    let lines: Vec<String> = stdin.lock().lines()
+        .map(|l| l.unwrap())
+        .collect();
+
+    // Your solution here
+    // lines[0], lines[1], etc.
+
+    println!("output here");
+}
+`,
+      bash: `#!/bin/bash
+
+# Read input
+read -r line1
+# read -r line2
+
+# Your solution here
+
+echo "output here"
+`,
+    };
+    return templates[lang] || `// Read from stdin, write to stdout\n`;
+  }
+
   // Initialize code from active submission or starter code
   useEffect(() => {
     if (activeSubmission?.content) {
@@ -231,6 +334,12 @@ export default function SubmitChallengePage() {
       const initial = challenge.starterCode;
       setCode(initial);
       lastGeneratedCode.current = initial;
+    } else if (challenge?.type === 'CODING' || challenge?.type === 'MIXED') {
+      // Generate stdin boilerplate for the solution language
+      const lang = challenge?.solutionLanguage || 'javascript';
+      const template = getStarterTemplate(lang);
+      setCode(template);
+      lastGeneratedCode.current = template;
     }
   }, [activeSubmission, challenge]);
 
