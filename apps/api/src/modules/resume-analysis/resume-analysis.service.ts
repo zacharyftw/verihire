@@ -365,12 +365,23 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
             : 'EXPERT';
 
     const codingRules = `CODING RULES:
-- Solution MUST read from STDIN and write to STDOUT. No external imports/libraries.
+- Solution MUST read from STDIN and write to STDOUT.
+- Importing frameworks and libraries IS allowed. The sandbox has these pre-installed:
+  * JavaScript/Node.js: express, fastify, hono, react, next, prisma, mongoose, pg, axios, lodash, zod, jest, graphql, vue, svelte
+  * Python: fastapi, flask, django, requests, numpy, pandas, sqlalchemy, pymongo, redis, pydantic, pytest, beautifulsoup4, scikit-learn
+  * Also available: Go, Rust, Java, C/C++, Ruby, PHP, Kotlin, Scala, Bash, Haskell, Elixir, R, Perl, Lua with standard libraries
+- For DOMAIN_SPECIFIC challenges: USE the actual framework as a library. Examples:
+  * Express: "Use express Router to parse route patterns. Read routes from stdin, output matched params as JSON."
+  * React: "Use React.createElement to build a virtual DOM tree from JSON input. Output the rendered HTML string."
+  * NumPy: "Read a matrix from stdin, use numpy to compute eigenvalues. Output them sorted."
+  * Prisma: "Given a schema definition on stdin, output the SQL CREATE TABLE statements."
+  * Flask: "Use Flask's URL routing to match patterns. Read URL and routes from stdin, output the match."
+- Despite using frameworks, the program MUST still read from STDIN and write to STDOUT for testing.
 - Description MUST specify EXACT input format, output format, with 2 complete examples.
 - Specify behavior unambiguously: insert = append or prepend, sort = asc or desc, empty input output, separators.
 - Reference solution MUST be COMPLETE runnable code (no "..." placeholders).
-- For JS: use readline pattern. For Python: use sys.stdin. For Rust: use std::io.
-- Keep reference solution under 40 lines. If longer, simplify the problem.`;
+- For JS: use readline pattern for stdin. For Python: use sys.stdin.
+- Keep reference solution under 50 lines. If longer, simplify the problem.`;
 
     const allChallenges: Array<{
       title: string;
