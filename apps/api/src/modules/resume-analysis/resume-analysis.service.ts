@@ -487,8 +487,13 @@ ${batch.instruction}`;
 
         allChallenges.push(...challenges);
         this.logger.log(`Batch "${batch.type}": generated ${challenges.length} challenges`);
+
+        // Wait between batches to avoid Groq rate limiting
+        await new Promise(resolve => setTimeout(resolve, 3000));
       } catch (error) {
         this.logger.error(`Batch "${batch.type}" failed: ${error}`);
+        // Wait longer on failure (likely rate limited)
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
