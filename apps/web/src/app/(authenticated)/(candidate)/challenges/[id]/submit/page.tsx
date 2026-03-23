@@ -204,6 +204,9 @@ export default function SubmitChallengePage() {
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const hasUserEdited = useRef(false);
   const lastGeneratedCode = useRef<string>('');
+  const pasteCount = useRef(0);
+  const pastedChars = useRef(0);
+  const totalKeystrokes = useRef(0);
 
   // Lock language to the challenge's solution language
   const availableLanguages = useMemo(() => {
@@ -359,12 +362,37 @@ echo "output here"
     }
   }
 
+  function handlePaste() {
+    pasteCount.current++;
+  }
+
+  function handleKeyDown() {
+    totalKeystrokes.current++;
+  }
+
   function handleCodeChange(value: string | undefined) {
     const val = value || '';
+    const diff = Math.abs(val.length - code.length);
+    if (diff > 30) {
+      pastedChars.current += diff;
+    }
+    totalKeystrokes.current++;
     setCode(val);
     if (val !== lastGeneratedCode.current) {
       hasUserEdited.current = true;
     }
+  }
+
+  function getBehavioralMetadata() {
+    const totalChars = code.length;
+    const pasteRatio = totalChars > 0 ? pastedChars.current / totalChars : 0;
+    return {
+      pasteCount: pasteCount.current,
+      pastedChars: pastedChars.current,
+      totalKeystrokes: totalKeystrokes.current,
+      pasteRatio: Math.round(pasteRatio * 100) / 100,
+      totalChars,
+    };
   }
 
   // Timer
@@ -448,7 +476,17 @@ echo "output here"
         return;
       }
 
-      const result = await submitSolution(subId, { content: code, language });
+      const result = await submitSolution(subId, {
+        content: code,
+        language,
+        files: [
+          {
+            name: '_behavioral_metadata',
+            content: JSON.stringify(getBehavioralMetadata()),
+            type: 'metadata',
+          },
+        ],
+      });
       toast({ title: 'Solution submitted!' });
       router.push(ROUTES.submissionResults(result.id));
     } catch (err) {
@@ -538,7 +576,11 @@ echo "output here"
       {/* Main content */}
       <div className="mt-4 grid flex-1 gap-4 lg:grid-cols-3">
         {/* Editor / Writer */}
-        <div className="overflow-hidden rounded-lg border lg:col-span-2">
+        <div
+          className="overflow-hidden rounded-lg border lg:col-span-2"
+          onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
+        >
           {challenge?.type === 'WRITTEN' ? (
             <textarea
               className="h-full w-full resize-none bg-background p-6 text-sm leading-relaxed focus:outline-none"
