@@ -31,9 +31,22 @@ export default function SubmissionResultsPage() {
 
   // Check for plagiarism flag in evaluation staticAnalysis
   const staticAnalysis = evaluation?.staticAnalysis as
-    | { plagiarism?: { flagged?: boolean } }
+    | {
+        plagiarism?: { flagged?: boolean };
+        integrityCompromised?: boolean;
+        integrityFlags?: string[];
+      }
     | undefined;
   const isPlagiarized = staticAnalysis?.plagiarism?.flagged === true;
+  const isIntegrityCompromised = staticAnalysis?.integrityCompromised === true;
+  const integrityFlags = staticAnalysis?.integrityFlags || [];
+
+  const flagLabels: Record<string, string> = {
+    plagiarism: 'Code similarity with another submission',
+    ai_generated: 'AI-generated code detected',
+    suspicious_timing: 'Suspiciously fast completion',
+    excessive_paste: 'Excessive copy-paste detected',
+  };
 
   // Parse criteria scores
   const criteriaScores = evaluation?.criteriaScores || {};
@@ -69,7 +82,21 @@ export default function SubmissionResultsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {isPlagiarized && (
+          {isIntegrityCompromised && (
+            <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-4">
+              <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+              <div>
+                <h3 className="font-semibold text-red-800">Submission Integrity Flagged</h3>
+                <p className="mt-1 text-sm text-red-700">
+                  This submission was flagged for:{' '}
+                  {integrityFlags.map(f => flagLabels[f] || f).join(', ')}. It will not count toward
+                  your domain score.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isPlagiarized && !isIntegrityCompromised && (
             <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-4">
               <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
               <div>
@@ -122,7 +149,7 @@ export default function SubmissionResultsPage() {
             </div>
           )}
 
-          {hasResults && !isPlagiarized && (
+          {hasResults && !isPlagiarized && !isIntegrityCompromised && (
             <>
               {/* Overall Score */}
               <div className="text-center">

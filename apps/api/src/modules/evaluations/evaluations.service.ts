@@ -563,8 +563,59 @@ export class EvaluationsService {
 
       const processingTimeMs = Date.now() - startTime;
 
-      // 9.5. If plagiarism detected via CodeBERT (similarity > 0.85), zero out the score
-      if (plagiarismResult.flagged) {
+      // 9.5. Integrity analysis — AI detection, timing, and behavioral signals
+
+      // Extract behavioral metadata from submission files
+      let behavioralData: { pasteRatio?: number; timeSpentSeconds?: number } | null = null;
+      try {
+        const files = (submission as any).files;
+        if (Array.isArray(files)) {
+          const metaFile = files.find(
+            (f: any) => f.name === '_behavioral_metadata' || f.filename === '_behavioral_metadata'
+          );
+          if (metaFile) {
+            behavioralData =
+              typeof metaFile.content === 'string'
+                ? JSON.parse(metaFile.content)
+                : metaFile.content;
+          }
+        }
+      } catch (err) {
+        this.logger.debug(`Failed to parse behavioral metadata: ${err}`);
+      }
+
+      // AI detection via LLM
+      const aiDetection = await this.plagiarismService.detectAIGenerated(code, language);
+
+      // Time suspicion check
+      const timeSpentSeconds =
+        behavioralData?.timeSpentSeconds ?? Math.round(processingTimeMs / 1000); // fallback to processing time if no metadata
+      const difficulty = submission.challenge.difficulty || 'BEGINNER';
+      const timeSuspicion = this.plagiarismService.checkTimeSuspicion(
+        timeSpentSeconds,
+        difficulty,
+        code.length
+      );
+
+      // Paste ratio check
+      const pasteRatio = behavioralData?.pasteRatio ?? 0;
+
+      // Combine integrity signals
+      const integrityFlags: string[] = [];
+      if (plagiarismResult.flagged) integrityFlags.push('plagiarism');
+      if (aiDetection.isAI && aiDetection.confidence > 0.7) integrityFlags.push('ai_generated');
+      if (timeSuspicion.suspicious) integrityFlags.push('suspicious_timing');
+      if (pasteRatio > 0.8) integrityFlags.push('excessive_paste');
+
+      const integrityCompromised = integrityFlags.length >= 2;
+
+      if (integrityCompromised) {
+        this.logger.warn(
+          `Integrity compromised for ${submissionId}: ${integrityFlags.join(', ')} — zeroing score`
+        );
+        overallScore = 0;
+        feedback = `Submission integrity flagged: ${integrityFlags.join(', ')}. ${feedback}`;
+      } else if (plagiarismResult.flagged) {
         this.logger.warn(
           `Plagiarism detected for ${submissionId} via ${plagiarismResult.method}: zeroing score`
         );
@@ -585,6 +636,18 @@ export class EvaluationsService {
               mostSimilarSubmissionId: plagiarismResult.similarSubmissionId,
               method: plagiarismResult.method,
             },
+            aiDetection: {
+              isAI: aiDetection.isAI,
+              confidence: aiDetection.confidence,
+              reasons: aiDetection.reasons,
+            },
+            timeSuspicion: {
+              suspicious: timeSuspicion.suspicious,
+              reason: timeSuspicion.reason,
+            },
+            behavioral: behavioralData,
+            integrityFlags,
+            integrityCompromised,
           } as any,
           testResults: testResultsData as any,
           feedback,
@@ -1221,10 +1284,11 @@ export class EvaluationsService {
       for (const sub of submissions) {
         if (!sub.challenge.domainTag) continue;
 
-        // Skip plagiarized submissions — they should not contribute to domain scores
+        // Skip plagiarized or integrity-compromised submissions — they should not contribute to domain scores
         const latestEval = sub.evaluations?.[0];
         const staticAnalysis = latestEval?.staticAnalysis as any;
         if (staticAnalysis?.plagiarism?.flagged) continue;
+        if (staticAnalysis?.integrityCompromised) continue;
 
         const domain = sub.challenge.domainTag;
         const difficulty = sub.challenge.difficulty || 'BEGINNER';
