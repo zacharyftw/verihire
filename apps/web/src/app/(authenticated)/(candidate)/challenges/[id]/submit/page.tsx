@@ -207,6 +207,9 @@ export default function SubmitChallengePage() {
   const pasteCount = useRef(0);
   const pastedChars = useRef(0);
   const totalKeystrokes = useRef(0);
+  const tabSwitchCount = useRef(0);
+  const [tabWarning, setTabWarning] = useState(0);
+  const autoSubmittedRef = useRef(false);
 
   // Lock language to the challenge's solution language
   const availableLanguages = useMemo(() => {
@@ -444,6 +447,58 @@ echo "output here"
       });
   }, [challengeLoading, subLoading, activeSubmission, id]);
 
+  // Tab switch / focus loss detection — auto-submit after 2 violations
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden && !autoSubmittedRef.current) {
+        tabSwitchCount.current++;
+        setTabWarning(tabSwitchCount.current);
+
+        if (tabSwitchCount.current >= 2) {
+          // Auto-submit on 2nd violation
+          autoSubmittedRef.current = true;
+          forceSubmit();
+        }
+      }
+    }
+
+    async function forceSubmit() {
+      const subId = activeSubmission?.id;
+      if (!subId) return;
+
+      try {
+        await updateSubmission(subId, { content: code, language });
+        const result = await submitSolution(subId, {
+          content: code,
+          language,
+          files: [
+            {
+              name: '_behavioral_metadata',
+              content: JSON.stringify({
+                ...getBehavioralMetadata(),
+                tabSwitches: tabSwitchCount.current,
+                autoSubmitted: true,
+                reason: 'tab_switch_violation',
+              }),
+              type: 'metadata',
+            },
+          ],
+        });
+        toast({
+          title: 'Submission auto-submitted',
+          description: 'You switched tabs too many times. Your current code has been submitted.',
+          variant: 'destructive',
+        });
+        router.push(ROUTES.submissionResults(result.id));
+      } catch {
+        toast({ title: 'Auto-submit failed', variant: 'destructive' });
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [activeSubmission?.id, code, language, router]);
+
   if (challengeLoading || subLoading || autoStarting) return <PageLoader />;
 
   async function handleSave() {
@@ -509,6 +564,13 @@ echo "output here"
 
   return (
     <div className="flex h-full flex-col">
+      {/* Tab switch warning */}
+      {tabWarning > 0 && tabWarning < 2 && (
+        <div className="mb-2 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          Warning: Tab switch detected ({tabWarning}/2). Your test will be auto-submitted on the
+          next tab switch.
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between border-b pb-4">
         <div className="flex items-center gap-3">
