@@ -4,8 +4,9 @@ import { ConfigService } from '@nestjs/config';
 export interface GeneratedTestCase {
   input: string;
   expectedOutput: string;
-  category: 'normal' | 'edge' | 'boundary' | 'performance';
+  category: 'normal' | 'edge' | 'boundary' | 'performance' | 'property';
   description: string;
+  validator?: string; // JavaScript function body: (output, input) => { pass: boolean, reason?: string }
 }
 
 export interface GeneratedFeedback {
@@ -153,6 +154,98 @@ ${requirementsList}
 Generate ${numTestCases} test cases.`;
 
     return this.callLLMForTestCases(systemPrompt, userPrompt, numTestCases);
+  }
+
+  /**
+   * Generate property-based test cases for non-deterministic challenges.
+   * Instead of expected outputs, generates validator functions that check properties of the output.
+   */
+  async generatePropertyTests(params: {
+    challengeTitle: string;
+    challengeDescription: string;
+    language: string;
+    numProperties?: number;
+  }): Promise<GeneratedTestCase[]> {
+    const numProps = params.numProperties || 6;
+
+    const systemPrompt = `You generate PROPERTY-BASED test validators for coding challenges where the output is non-deterministic (multiple correct answers exist).
+
+Instead of expected outputs, you generate JavaScript validator functions that check PROPERTIES of the output.
+
+RESPONSE FORMAT (JSON array, no markdown):
+[
+  {
+    "input": "the stdin input to send",
+    "description": "what property this validates",
+    "category": "property",
+    "validator": "the JavaScript function body"
+  }
+]
+
+VALIDATOR FORMAT — each validator is a JavaScript function body that receives (output, input) and returns {pass: boolean, reason?: string}:
+Example: "try { const json = JSON.parse(output); if (!json.hasOwnProperty('A')) return {pass: false, reason: 'Missing node A'}; return {pass: true}; } catch(e) { return {pass: false, reason: 'Invalid JSON'}; }"
+
+RULES:
+- Generate ${numProps} property validators
+- Each validator checks ONE specific property (single responsibility)
+- Validators must be pure JavaScript — no imports, no async
+- Properties should cover: output format, value ranges, structural correctness, relationships, edge cases
+- Use different inputs for different validators to test various scenarios
+- The "input" field contains the stdin that will be sent to the program
+- The "validator" field is a JS function body with params (output, input)
+- Return {pass: true} for success, {pass: false, reason: "why"} for failure
+- Output ONLY valid JSON array`;
+
+    const userPrompt = `CHALLENGE: ${params.challengeTitle}
+DESCRIPTION: ${params.challengeDescription}
+LANGUAGE: ${params.language}
+
+Generate ${numProps} property-based validators for this challenge.`;
+
+    try {
+      const content = await this.callLLM(systemPrompt, userPrompt);
+      const jsonStr = content
+        .replace(/```json?\n?/g, '')
+        .replace(/```/g, '')
+        .trim();
+      const parsed = JSON.parse(jsonStr);
+
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map(
+        (tc: { input?: string; description?: string; validator?: string; category?: string }) => ({
+          input: tc.input || '',
+          expectedOutput: '', // not used for property tests
+          description: tc.description || 'Property check',
+          category: 'property' as const,
+          validator: tc.validator || 'return {pass: false, reason: "No validator"}',
+        })
+      );
+    } catch (error) {
+      this.logger.error(`Property test generation failed: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Run a validator function against actual output.
+   * Returns { pass: boolean, reason?: string }
+   */
+  runValidator(
+    validatorBody: string,
+    output: string,
+    input: string
+  ): { pass: boolean; reason?: string } {
+    try {
+      const fn = new Function('output', 'input', validatorBody);
+      const result = fn(output, input);
+      if (typeof result === 'object' && result !== null) {
+        return { pass: !!result.pass, reason: result.reason };
+      }
+      return { pass: !!result };
+    } catch (error) {
+      return { pass: false, reason: `Validator error: ${error}` };
+    }
   }
 
   async generateFeedback(params: {

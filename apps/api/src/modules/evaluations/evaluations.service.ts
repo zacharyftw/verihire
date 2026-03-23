@@ -355,7 +355,8 @@ export class EvaluationsService {
         } else {
           const accuracyScore = executionResults.accuracy;
 
-          if (allTestCases.length > 0) {
+          if (allTestCases.length > 0 && accuracyScore > 0) {
+            // Regular test cases passed — use standard scoring
             overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
             criteriaScores = {
               correctness: {
@@ -373,11 +374,141 @@ export class EvaluationsService {
             feedback = codeFeedback;
             suggestions = codeSuggestions;
             confidence = 0.85;
-          } else {
-            // No test cases generated — use LLM text evaluation instead of scoring 0
-            this.logger.log(
-              'No test cases available for CODING challenge, using LLM text evaluation'
-            );
+          } else if (
+            allTestCases.length > 0 &&
+            accuracyScore === 0 &&
+            executionResults.results.some(r => r.actualOutput != null)
+          ) {
+            // Code ran and produced output but 0% match — try property-based testing
+            // This handles non-deterministic challenges where exact matching fails
+            this.logger.log('0% accuracy but code produced output — trying property-based testing');
+            try {
+              const propertyTests = await this.testCaseGenerator.generatePropertyTests({
+                challengeTitle: submission.challenge.title,
+                challengeDescription: submission.challenge.description,
+                language,
+              });
+
+              if (propertyTests.length > 0) {
+                // Run candidate code for each property test input, then validate
+                let propertiesPassed = 0;
+                const propertyResults: Array<{ name: string; passed: boolean; reason?: string }> =
+                  [];
+
+                for (const pt of propertyTests) {
+                  // Execute code with this test's input
+                  const execResult = await this.codeExecutionService.executeCode({
+                    code,
+                    language,
+                    stdin: pt.input,
+                    timeLimit: 10,
+                  });
+
+                  const actualOutput = execResult.stdout || '';
+
+                  // Run validator
+                  if (pt.validator) {
+                    const validation = this.testCaseGenerator.runValidator(
+                      pt.validator,
+                      actualOutput,
+                      pt.input
+                    );
+                    propertyResults.push({
+                      name: pt.description,
+                      passed: validation.pass,
+                      reason: validation.reason,
+                    });
+                    if (validation.pass) propertiesPassed++;
+                  }
+                }
+
+                const propertyAccuracy = Math.round(
+                  (propertiesPassed / propertyTests.length) * 100
+                );
+
+                overallScore = Math.round(propertyAccuracy * 0.6 + codeQualityScore * 0.4);
+                criteriaScores = {
+                  property_tests: {
+                    score: propertyAccuracy,
+                    maxScore: 100,
+                    feedback: `${propertiesPassed}/${propertyTests.length} properties satisfied`,
+                  },
+                  code_quality: {
+                    score: codeQualityScore,
+                    maxScore: 100,
+                    feedback:
+                      codeQualityNotes || 'Code quality analysis based on structure and patterns.',
+                  },
+                };
+                feedback = `Property-based evaluation: ${propertiesPassed}/${propertyTests.length} properties passed. ${codeFeedback}`;
+                suggestions = [
+                  ...propertyResults
+                    .filter(r => !r.passed)
+                    .map(r => `Failed: ${r.name}${r.reason ? ` — ${r.reason}` : ''}`),
+                  ...codeSuggestions,
+                ];
+                confidence = 0.8;
+
+                // Update test results data with property results
+                testResultsData = {
+                  totalTests: propertyTests.length,
+                  passed: propertiesPassed,
+                  failed: propertyTests.length - propertiesPassed,
+                  accuracy: propertyAccuracy,
+                  results: propertyResults.map(r => ({
+                    name: r.name,
+                    passed: r.passed,
+                    input: '',
+                    expectedOutput: 'Property satisfied',
+                    actualOutput: r.passed ? 'Pass' : r.reason || 'Fail',
+                    status: r.passed ? 'Accepted' : 'Wrong Answer',
+                    time: null,
+                    memory: null,
+                    error: null,
+                  })),
+                  evaluationType: 'property-based',
+                };
+
+                this.logger.log(
+                  `Property-based testing: ${propertiesPassed}/${propertyTests.length} passed, score=${overallScore}`
+                );
+              } else {
+                // Property test generation failed — fall back to LLM text evaluation
+                this.logger.log(
+                  'Property test generation failed, falling back to LLM text evaluation'
+                );
+                const textResult = await this.testCaseGenerator.evaluateTextSubmission({
+                  challengeTitle: submission.challenge.title,
+                  challengeDescription: submission.challenge.description,
+                  candidateAnswer: code,
+                  referenceSolution: submission.challenge.referenceSolution || '',
+                  challengeType: 'CODING',
+                });
+                overallScore = textResult.overallScore;
+                criteriaScores = textResult.criteriaScores;
+                feedback = textResult.feedback;
+                suggestions = textResult.suggestions;
+                confidence = 0.7;
+              }
+            } catch (propError) {
+              this.logger.error(`Property-based testing failed: ${propError}`);
+              // Final fallback — LLM text evaluation
+              const textResult = await this.testCaseGenerator.evaluateTextSubmission({
+                challengeTitle: submission.challenge.title,
+                challengeDescription: submission.challenge.description,
+                candidateAnswer: code,
+                referenceSolution: submission.challenge.referenceSolution || '',
+                challengeType: 'CODING',
+              });
+              overallScore = textResult.overallScore;
+              criteriaScores = textResult.criteriaScores;
+              feedback = textResult.feedback;
+              suggestions = textResult.suggestions;
+              confidence = 0.7;
+            }
+          } else if (allTestCases.length === 0) {
+            // No test cases at all — LLM text evaluation
+            this.logger.log('No test cases available, using LLM text evaluation');
             const textResult = await this.testCaseGenerator.evaluateTextSubmission({
               challengeTitle: submission.challenge.title,
               challengeDescription: submission.challenge.description,
@@ -390,6 +521,24 @@ export class EvaluationsService {
             feedback = textResult.feedback;
             suggestions = textResult.suggestions;
             confidence = 0.7;
+          } else {
+            // Test cases exist but code didn't produce any output (crash/compile error)
+            overallScore = Math.round(codeQualityScore * 0.3);
+            criteriaScores = {
+              correctness: {
+                score: 0,
+                maxScore: 100,
+                feedback: 'Code failed to produce output for all test cases',
+              },
+              code_quality: {
+                score: codeQualityScore,
+                maxScore: 100,
+                feedback: codeQualityNotes || '',
+              },
+            };
+            feedback = codeFeedback;
+            suggestions = codeSuggestions;
+            confidence = 0.5;
           }
           testResultsData = {
             totalTests: executionResults.totalTests,
