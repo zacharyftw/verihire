@@ -3,6 +3,7 @@ import { prisma } from '@verihire/database';
 import { CertificateService, GeneratedCertificate } from './certificate.service';
 import { TestCaseGeneratorService, GeneratedTestCase } from './test-case-generator.service';
 import { CodeExecutionService, TestCaseResults } from '../code-execution/code-execution.service';
+import { PlagiarismService } from './plagiarism.service';
 
 export interface EvaluationWithCertificate {
   evaluation: {
@@ -25,7 +26,8 @@ export class EvaluationsService {
   constructor(
     private certificateService: CertificateService,
     private testCaseGenerator: TestCaseGeneratorService,
-    private codeExecutionService: CodeExecutionService
+    private codeExecutionService: CodeExecutionService,
+    private plagiarismService: PlagiarismService
   ) {}
 
   /**
@@ -79,6 +81,7 @@ export class EvaluationsService {
         flagged: false,
         maxSimilarity: 0,
         similarSubmissionId: null as string | null,
+        method: 'ngram' as 'codebert' | 'ngram',
       };
       let testResultsData: any = { totalTests: 0, passed: 0, failed: 0, accuracy: 0, results: [] };
 
@@ -101,7 +104,11 @@ export class EvaluationsService {
         confidence = 0.8;
 
         // Plagiarism check on text answers too
-        plagiarismResult = await this.checkPlagiarism(submissionId, submission.challengeId, code);
+        plagiarismResult = await this.plagiarismService.checkPlagiarism(
+          submissionId,
+          submission.challengeId,
+          code
+        );
       } else if (challengeType === 'MIXED') {
         // ── MIXED EVALUATION (code execution + text evaluation) ──
         this.logger.log('Evaluating MIXED submission: code execution + text evaluation');
@@ -132,7 +139,7 @@ export class EvaluationsService {
         confidence = 0.8;
         testResultsData = codeEval.testResultsData;
 
-        plagiarismResult = await this.checkPlagiarism(
+        plagiarismResult = await this.plagiarismService.checkPlagiarism(
           submissionId,
           submission.challengeId,
           codePart
@@ -285,14 +292,18 @@ export class EvaluationsService {
             allTestCases.length > 0
               ? this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
               : Promise.resolve<TestCaseResults>(executionResults),
-            this.checkPlagiarism(submissionId, submission.challengeId, code),
+            this.plagiarismService.checkPlagiarism(submissionId, submission.challengeId, code),
           ]);
           executionResults = execResults;
           plagiarismResult = codePlagiarismResult;
         } catch (execError) {
           this.logger.warn(`Judge0 unavailable, falling back to LLM-only evaluation: ${execError}`);
           judge0Available = false;
-          plagiarismResult = await this.checkPlagiarism(submissionId, submission.challengeId, code);
+          plagiarismResult = await this.plagiarismService.checkPlagiarism(
+            submissionId,
+            submission.challengeId,
+            code
+          );
         }
 
         if (judge0Available && allTestCases.length > 0) {
@@ -552,6 +563,15 @@ export class EvaluationsService {
 
       const processingTimeMs = Date.now() - startTime;
 
+      // 9.5. If plagiarism detected via CodeBERT (similarity > 0.85), zero out the score
+      if (plagiarismResult.flagged) {
+        this.logger.warn(
+          `Plagiarism detected for ${submissionId} via ${plagiarismResult.method}: zeroing score`
+        );
+        overallScore = 0;
+        feedback = `Plagiarism detected: This submission has ${plagiarismResult.maxSimilarity}% similarity with another submission (method: ${plagiarismResult.method}). ${feedback}`;
+      }
+
       // 10. Save evaluation to DB
       const evaluation = await prisma.evaluation.create({
         data: {
@@ -563,6 +583,7 @@ export class EvaluationsService {
               flagged: plagiarismResult.flagged,
               similarityScore: plagiarismResult.maxSimilarity,
               mostSimilarSubmissionId: plagiarismResult.similarSubmissionId,
+              method: plagiarismResult.method,
             },
           } as any,
           testResults: testResultsData as any,
@@ -1153,91 +1174,6 @@ export class EvaluationsService {
     return [];
   }
 
-  private async checkPlagiarism(
-    submissionId: string,
-    challengeId: string,
-    code: string
-  ): Promise<{ flagged: boolean; maxSimilarity: number; similarSubmissionId: string | null }> {
-    const normalized = this.normalizeCodeForSimilarity(code);
-
-    if (normalized.length < 50) {
-      return { flagged: false, maxSimilarity: 0, similarSubmissionId: null };
-    }
-
-    const codeNgrams = this.getCharNgrams(normalized);
-
-    const others = await prisma.submission.findMany({
-      where: {
-        challengeId,
-        id: { not: submissionId },
-        status: 'EVALUATED',
-        content: { not: null },
-      },
-      select: { id: true, content: true },
-      take: 500,
-      orderBy: { submittedAt: 'desc' },
-    });
-
-    let maxSimilarity = 0;
-    let similarSubmissionId: string | null = null;
-
-    for (const other of others) {
-      if (!other.content) continue;
-      const otherNgrams = this.getCharNgrams(this.normalizeCodeForSimilarity(other.content));
-      const similarity = this.jaccardSimilarity(codeNgrams, otherNgrams);
-      if (similarity > maxSimilarity) {
-        maxSimilarity = similarity;
-        similarSubmissionId = other.id;
-      }
-    }
-
-    const flagged = maxSimilarity >= 0.7;
-    if (flagged) {
-      this.logger.warn(
-        `Plagiarism flagged for ${submissionId}: ${Math.round(maxSimilarity * 100)}% similar to ${similarSubmissionId}`
-      );
-    }
-
-    return {
-      flagged,
-      maxSimilarity: Math.round(maxSimilarity * 10000) / 100,
-      similarSubmissionId,
-    };
-  }
-
-  private normalizeCodeForSimilarity(code: string): string {
-    return code
-      .replace(/\/\/[^\n]*/g, '') // single-line comments (JS/TS/Java/Go/Rust)
-      .replace(/#[^\n]*/g, '') // single-line comments (Python/Ruby)
-      .replace(/\/\*[\s\S]*?\*\//g, '') // multi-line comments
-      .replace(/"""[\s\S]*?"""/g, '') // Python docstrings
-      .replace(/'''[\s\S]*?'''/g, '') // Python docstrings
-      .replace(/"(?:[^"\\]|\\.)*"/g, '') // double-quoted string literals
-      .replace(/'(?:[^'\\]|\\.)*'/g, '') // single-quoted string literals
-      .replace(/`(?:[^`\\]|\\.)*`/g, '') // template literals
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  private getCharNgrams(text: string, n = 10): Set<string> {
-    const ngrams = new Set<string>();
-    for (let i = 0; i <= text.length - n; i++) {
-      ngrams.add(text.slice(i, i + n));
-    }
-    return ngrams;
-  }
-
-  private jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-    if (a.size === 0 && b.size === 0) return 1;
-    if (a.size === 0 || b.size === 0) return 0;
-    let intersection = 0;
-    for (const item of a) {
-      if (b.has(item)) intersection++;
-    }
-    return intersection / (a.size + b.size - intersection);
-  }
-
   /**
    * Recalculate domain scores for a candidate after each evaluation.
    * Formula: domainScore = Σ(challengeScore × difficultyWeight) / Σ(difficultyWeight)
@@ -1250,6 +1186,7 @@ export class EvaluationsService {
   > {
     try {
       // Get all evaluated submissions for this candidate with their challenge details
+      // Include evaluations so we can exclude plagiarized submissions
       const submissions = await prisma.submission.findMany({
         where: {
           candidateId,
@@ -1259,6 +1196,11 @@ export class EvaluationsService {
         include: {
           challenge: {
             select: { domainTag: true, difficulty: true },
+          },
+          evaluations: {
+            select: { staticAnalysis: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
           },
         },
       });
@@ -1278,6 +1220,12 @@ export class EvaluationsService {
 
       for (const sub of submissions) {
         if (!sub.challenge.domainTag) continue;
+
+        // Skip plagiarized submissions — they should not contribute to domain scores
+        const latestEval = sub.evaluations?.[0];
+        const staticAnalysis = latestEval?.staticAnalysis as any;
+        if (staticAnalysis?.plagiarism?.flagged) continue;
+
         const domain = sub.challenge.domainTag;
         const difficulty = sub.challenge.difficulty || 'BEGINNER';
         const weight = difficultyWeights[difficulty] || 1;
