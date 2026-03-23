@@ -440,6 +440,9 @@ model Submission {
   ipAddress String? @map("ip_address") @db.Inet
   userAgent String? @map("user_agent") @db.Text
 
+  // CodeBERT embedding for plagiarism detection (768-dim vector stored as JSON)
+  codeEmbedding Json? @map("code_embedding")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

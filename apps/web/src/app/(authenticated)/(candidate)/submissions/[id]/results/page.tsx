@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,12 @@ export default function SubmissionResultsPage() {
   const isPassing = displayScore != null && displayScore >= 70;
   const isWaiting = ['SUBMITTED', 'EVALUATING'].includes(submission.status);
   const hasResults = displayScore != null;
+
+  // Check for plagiarism flag in evaluation staticAnalysis
+  const staticAnalysis = evaluation?.staticAnalysis as
+    | { plagiarism?: { flagged?: boolean } }
+    | undefined;
+  const isPlagiarized = staticAnalysis?.plagiarism?.flagged === true;
 
   // Parse criteria scores
   const criteriaScores = evaluation?.criteriaScores || {};
@@ -63,6 +69,19 @@ export default function SubmissionResultsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {isPlagiarized && (
+            <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-4">
+              <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+              <div>
+                <h3 className="font-semibold text-red-800">Plagiarism Detected</h3>
+                <p className="mt-1 text-sm text-red-700">
+                  This submission has been flagged for similarity with another submission. It will
+                  not count toward your domain score.
+                </p>
+              </div>
+            </div>
+          )}
+
           {isWaiting && !hasResults && (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
@@ -103,7 +122,7 @@ export default function SubmissionResultsPage() {
             </div>
           )}
 
-          {hasResults && (
+          {hasResults && !isPlagiarized && (
             <>
               {/* Overall Score */}
               <div className="text-center">

@@ -49,6 +49,10 @@ export default () => ({
     apiHost: process.env.JUDGE0_API_HOST || '',
   },
 
+  huggingface: {
+    apiToken: process.env.HF_API_TOKEN || '',
+  },
+
   cors: {
     origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3100'],
   },
