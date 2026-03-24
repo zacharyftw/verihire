@@ -10,6 +10,7 @@ export class ChallengesService {
     type?: ChallengeType;
     limit?: number;
     offset?: number;
+    candidateId?: string;
   }) {
     const skillId = options?.skillId;
     const difficulty = options?.difficulty;
@@ -22,6 +23,11 @@ export class ChallengesService {
     if (skillId) where.skillId = skillId;
     if (difficulty) where.difficulty = difficulty;
     if (type) where.type = type;
+
+    // Only show challenges generated for this candidate
+    if (options?.candidateId) {
+      where.generatedForCandidateId = options.candidateId;
+    }
 
     const [challenges, total] = await Promise.all([
       prisma.challenge.findMany({
