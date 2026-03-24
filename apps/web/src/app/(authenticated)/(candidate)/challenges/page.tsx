@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/page-header';
 import { SearchInput } from '@/components/search-input';
 import { EmptyState } from '@/components/empty-state';
 import { useChallenges } from '@/hooks/use-challenges';
+import { useMySubmissions } from '@/hooks/use-submissions';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ROUTES, DIFFICULTY_LABELS, DIFFICULTY_COLORS } from '@/lib/constants';
 
@@ -30,10 +31,20 @@ export default function ChallengesPage() {
   const { data, isLoading } = useChallenges({
     difficulty: difficulty || undefined,
     type: type || undefined,
-    limit: 20,
+    limit: 50,
   });
+  const { data: submissionsData } = useMySubmissions({});
 
-  const challenges = data?.items || [];
+  // Filter out challenges that have been attempted (have a submission)
+  const attemptedChallengeIds = new Set(
+    (submissionsData?.items || [])
+      .filter(
+        s => s.status === 'EVALUATED' || s.status === 'SUBMITTED' || s.status === 'EVALUATING'
+      )
+      .map(s => s.challengeId)
+  );
+
+  const challenges = (data?.items || []).filter(c => !attemptedChallengeIds.has(c.id));
   const filtered = debouncedSearch
     ? challenges.filter(c => c.title.toLowerCase().includes(debouncedSearch.toLowerCase()))
     : challenges;
