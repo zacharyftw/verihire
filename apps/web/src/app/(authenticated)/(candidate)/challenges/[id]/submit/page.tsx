@@ -210,6 +210,8 @@ export default function SubmitChallengePage() {
   const tabSwitchCount = useRef(0);
   const [tabWarning, setTabWarning] = useState(0);
   const autoSubmittedRef = useRef(false);
+  const timeAutoSubmittedRef = useRef(false);
+  const problemPanelRef = useRef<HTMLDivElement>(null);
 
   // Lock language to the challenge's solution language
   const availableLanguages = useMemo(() => {
@@ -499,6 +501,65 @@ echo "output here"
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [activeSubmission?.id, code, language, router]);
 
+  // Timer auto-submit when time runs out
+  useEffect(() => {
+    if (timeLeft !== 0 || timeAutoSubmittedRef.current || autoSubmittedRef.current) return;
+    if (!activeSubmission?.id) return;
+
+    timeAutoSubmittedRef.current = true;
+    autoSubmittedRef.current = true;
+
+    (async () => {
+      const subId = activeSubmission.id;
+      try {
+        await updateSubmission(subId, { content: code, language });
+        const result = await submitSolution(subId, {
+          content: code,
+          language,
+          files: [
+            {
+              name: '_behavioral_metadata',
+              content: JSON.stringify({
+                ...getBehavioralMetadata(),
+                tabSwitches: tabSwitchCount.current,
+                autoSubmitted: true,
+                reason: 'time_expired',
+              }),
+              type: 'metadata',
+            },
+          ],
+        });
+        toast({
+          title: "Time's up! Your code has been auto-submitted.",
+        });
+        router.push(ROUTES.submissionResults(result.id));
+      } catch {
+        toast({ title: 'Auto-submit failed', variant: 'destructive' });
+      }
+    })();
+  }, [timeLeft, activeSubmission?.id, code, language, router]);
+
+  // Prevent right-click and Ctrl+C on problem panel (but allow in editor)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        const panel = problemPanelRef.current;
+        if (panel) {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            if (panel.contains(range.startContainer)) {
+              e.preventDefault();
+            }
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (challengeLoading || subLoading || autoStarting) return <PageLoader />;
 
   async function handleSave() {
@@ -669,8 +730,14 @@ echo "output here"
           )}
         </div>
 
-        {/* Right panel — scrollable */}
-        <div className="space-y-4 overflow-y-auto lg:max-h-[calc(100vh-10rem)]">
+        {/* Right panel — scrollable, copy/select disabled */}
+        <div
+          ref={problemPanelRef}
+          className="space-y-4 overflow-y-auto lg:max-h-[calc(100vh-10rem)]"
+          style={{ userSelect: 'none' }}
+          onContextMenu={e => e.preventDefault()}
+          onCopy={e => e.preventDefault()}
+        >
           {/* Problem Description */}
           {challenge?.description && (
             <div className="rounded-lg border p-4">
