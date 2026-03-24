@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class StartSubmissionDto {
@@ -19,6 +20,17 @@ export class UpdateSubmissionDto {
   language?: string;
 }
 
+class SubmissionFileDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  content: string;
+
+  @IsString()
+  type: string;
+}
+
 export class SubmitDto {
   @ApiProperty({ description: 'Final code or content' })
   @IsString()
@@ -28,4 +40,11 @@ export class SubmitDto {
   @IsString()
   @IsOptional()
   language?: string;
+
+  @ApiPropertyOptional({ description: 'Additional files (behavioral metadata, etc.)' })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SubmissionFileDto)
+  @IsOptional()
+  files?: SubmissionFileDto[];
 }
