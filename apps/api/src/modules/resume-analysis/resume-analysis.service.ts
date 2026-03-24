@@ -336,22 +336,17 @@ Generate questions${isMidOrAbove ? ' and a take-home assignment' : ''} for this 
     const isMidOrAbove = ['mid', 'senior', 'staff'].includes(seniorityLevel);
     const topDomains = domains.slice(0, 15);
 
-    // Batch generation: 3 calls, 2 challenges each — avoids Groq token limit truncation
+    // Batch generation: 2 calls, 2 challenges each = 4 total
     const batches = [
       {
         type: 'CODING',
         count: 2,
-        instruction: `Generate exactly 2 CODING challenges. One GENERAL_SWE (algorithmic) and one DOMAIN_SPECIFIC (tests concepts from the candidate's tech stack as a pure algorithm).`,
+        instruction: `Generate exactly 2 CODING challenges. One GENERAL_SWE (algorithmic) and one DOMAIN_SPECIFIC (tests concepts from the candidate's tech stack).`,
       },
       {
         type: 'TEXT',
         count: 2,
         instruction: `Generate exactly 2 challenges: 1 DESIGN challenge (system design problem, type "DESIGN", solutionLanguage "plaintext") and 1 WRITTEN challenge (conceptual/theoretical question, type "WRITTEN", solutionLanguage "plaintext").`,
-      },
-      {
-        type: 'CODING2',
-        count: 2,
-        instruction: `Generate exactly 2 more CODING challenges. Both DOMAIN_SPECIFIC — test different domains from the candidate's stack. Use different languages for each.`,
       },
     ];
 
