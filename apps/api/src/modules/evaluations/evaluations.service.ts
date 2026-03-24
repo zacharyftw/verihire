@@ -69,553 +69,53 @@ export class EvaluationsService {
 
     try {
       const code = submission.content || '';
-      const language = submission.language || 'javascript';
+      const _language = submission.language || 'javascript';
       const challengeType = submission.challenge.type || 'CODING';
 
-      let overallScore: number;
-      let criteriaScores: Record<string, { score: number; maxScore: number; feedback: string }>;
-      let feedback: string;
-      let suggestions: string[] = [];
-      let confidence: number;
+      // All evaluation goes through LLM — no code execution needed
+      const textResult = await this.testCaseGenerator.evaluateTextSubmission({
+        challengeTitle: submission.challenge.title,
+        challengeDescription: submission.challenge.description,
+        candidateAnswer: code,
+        referenceSolution: submission.challenge.referenceSolution || '',
+        challengeType,
+      });
+
+      let overallScore = textResult.overallScore;
+      const criteriaScores = textResult.criteriaScores;
+      let feedback = textResult.feedback;
+      const suggestions = textResult.suggestions;
+      const confidence = 0.8;
+      const testResultsData = { totalTests: 0, passed: 0, failed: 0, accuracy: 0, results: [] };
+
+      // CodeBERT plagiarism check (candidate vs candidate only)
       let plagiarismResult = {
         flagged: false,
         maxSimilarity: 0,
         similarSubmissionId: null as string | null,
-        method: 'ngram' as 'codebert' | 'ngram',
+        method: 'codebert' as string,
       };
-      let testResultsData: any = { totalTests: 0, passed: 0, failed: 0, accuracy: 0, results: [] };
 
-      if (challengeType === 'DESIGN' || challengeType === 'WRITTEN') {
-        // ── TEXT-ONLY EVALUATION (no code execution) ──
-        this.logger.log(`Evaluating ${challengeType} submission via LLM text evaluation`);
-
-        const textResult = await this.testCaseGenerator.evaluateTextSubmission({
-          challengeTitle: submission.challenge.title,
-          challengeDescription: submission.challenge.description,
-          candidateAnswer: code,
-          referenceSolution: submission.challenge.referenceSolution || '',
-          challengeType,
-        });
-
-        overallScore = textResult.overallScore;
-        criteriaScores = textResult.criteriaScores;
-        feedback = textResult.feedback;
-        suggestions = textResult.suggestions;
-        confidence = 0.8;
-
-        // Plagiarism check on text answers too
+      // Plagiarism check (CodeBERT candidate-vs-candidate)
+      try {
         plagiarismResult = await this.plagiarismService.checkPlagiarism(
           submissionId,
           submission.challengeId,
           code
         );
-      } else if (challengeType === 'MIXED') {
-        // ── MIXED EVALUATION (code execution + text evaluation) ──
-        this.logger.log('Evaluating MIXED submission: code execution + text evaluation');
-
-        // Split submission: look for explanation markers
-        const { codePart, textPart } = this.splitMixedSubmission(code);
-
-        // Evaluate the code part via normal execution pipeline
-        const codeEval = await this.evaluateCodePart(submission, codePart, language);
-
-        // Evaluate the text/explanation part via LLM
-        const textResult = await this.testCaseGenerator.evaluateTextSubmission({
-          challengeTitle: submission.challenge.title,
-          challengeDescription: submission.challenge.description,
-          candidateAnswer: textPart || 'No explanation provided.',
-          referenceSolution: submission.challenge.referenceSolution || '',
-          challengeType: 'MIXED',
-        });
-
-        // Combine: 60% code execution + 40% text explanation
-        overallScore = Math.round(codeEval.score * 0.6 + textResult.overallScore * 0.4);
-        criteriaScores = {
-          ...codeEval.criteriaScores,
-          ...textResult.criteriaScores,
-        };
-        feedback = `Code evaluation: ${codeEval.feedback}\n\nExplanation evaluation: ${textResult.feedback}`;
-        suggestions = [...codeEval.suggestions, ...textResult.suggestions];
-        confidence = 0.8;
-        testResultsData = codeEval.testResultsData;
-
-        plagiarismResult = await this.plagiarismService.checkPlagiarism(
-          submissionId,
-          submission.challengeId,
-          codePart
-        );
-      } else {
-        // ── CODING EVALUATION (existing pipeline) ──
-
-        // 3. Gather manual test cases from the challenge
-        const manualTestCases = this.parseManualTestCases(submission.challenge.testCases);
-
-        // 4. Parse requirements
-        const requirements = this.parseRequirements(submission.challenge.requirements);
-
-        // 5. Get test cases — use cached ones if available, otherwise generate via LLM
-        //
-        // NOTE: cachedTestCases are invalidated when referenceSolution is updated
-        // (see ChallengesService.update). However, there is no `testCasesCachedAt`
-        // timestamp to support time-based expiry or staleness detection. If TTL-based
-        // invalidation is needed in the future, add a `testCasesCachedAt` DateTime
-        // field to the Challenge model and check it here before using the cache.
-        const cachedRaw = submission.challenge.cachedTestCases;
-        let cachedTestCases: GeneratedTestCase[] | null = null;
-
-        if (Array.isArray(cachedRaw) && cachedRaw.length > 0) {
-          // Validate that cached test cases have required fields
-          const isValid = cachedRaw.every(
-            (tc: any) =>
-              tc &&
-              typeof tc.input === 'string' &&
-              typeof tc.expectedOutput === 'string' &&
-              typeof tc.category === 'string' &&
-              typeof tc.description === 'string'
-          );
-          if (isValid) {
-            cachedTestCases = cachedRaw as unknown as GeneratedTestCase[];
-          } else {
-            this.logger.warn('Cached test cases are corrupted, regenerating...');
-          }
+        if (plagiarismResult.flagged) {
+          overallScore = 0;
+          feedback = `Plagiarism detected: ${plagiarismResult.maxSimilarity}% similarity. ${feedback}`;
         }
-        let generatedTestCases: GeneratedTestCase[] = [];
-
-        if (cachedTestCases && cachedTestCases.length > 0) {
-          generatedTestCases = cachedTestCases;
-          this.logger.log(`Using ${generatedTestCases.length} cached test cases for challenge`);
-        } else {
-          try {
-            generatedTestCases = await this.testCaseGenerator.generateTestCases({
-              challengeTitle: submission.challenge.title,
-              challengeDescription: submission.challenge.description,
-              requirements,
-              language,
-              numTestCases: 10,
-            });
-            this.logger.log(`Generated ${generatedTestCases.length} test cases via LLM`);
-          } catch (error) {
-            this.logger.warn(
-              `LLM test case generation failed: ${error}, using manual test cases only`
-            );
-          }
-
-          const referenceSolution = submission.challenge.referenceSolution;
-          const solutionLanguage = submission.challenge.solutionLanguage;
-
-          if (referenceSolution && generatedTestCases.length > 0) {
-            this.logger.log('Validating LLM test cases against reference solution...');
-            const refLang = solutionLanguage || language;
-
-            try {
-              const refResults = await this.codeExecutionService.runTestCases({
-                code: referenceSolution,
-                language: refLang,
-                testCases: generatedTestCases.map(tc => ({
-                  input: tc.input,
-                  expectedOutput: tc.expectedOutput,
-                  name: tc.description,
-                })),
-              });
-
-              const validatedTestCases: GeneratedTestCase[] = [];
-              for (let i = 0; i < generatedTestCases.length; i++) {
-                if (i >= refResults.results.length) break;
-                const refResult = refResults.results[i];
-                if (refResult && refResult.actualOutput != null && !refResult.error) {
-                  validatedTestCases.push({
-                    ...generatedTestCases[i],
-                    expectedOutput: refResult.actualOutput,
-                  });
-                }
-              }
-
-              if (validatedTestCases.length > 0) {
-                this.logger.log(
-                  `Validated ${validatedTestCases.length}/${generatedTestCases.length} test cases against reference solution`
-                );
-                generatedTestCases = validatedTestCases;
-              } else {
-                // Reference solution failed on ALL test cases (likely import/dependency issue)
-                // Keep the original LLM-generated test cases instead of dropping everything
-                this.logger.warn(
-                  `Reference solution failed on all ${generatedTestCases.length} test cases — using LLM-generated expected outputs instead`
-                );
-              }
-            } catch (refError) {
-              this.logger.warn(
-                `Judge0 unavailable for reference validation, using LLM-generated expected outputs: ${refError}`
-              );
-            }
-          } else if (!referenceSolution && generatedTestCases.length > 0) {
-            this.logger.warn(
-              'No reference solution available — using LLM-generated expected outputs (may contain errors)'
-            );
-          }
-
-          if (generatedTestCases.length > 0) {
-            await prisma.challenge.update({
-              where: { id: submission.challengeId },
-              data: { cachedTestCases: generatedTestCases as any },
-            });
-            this.logger.log(
-              `Cached ${generatedTestCases.length} test cases for challenge ${submission.challengeId}`
-            );
-          }
-        }
-
-        const allTestCases = [
-          ...manualTestCases.map(tc => ({
-            input: tc.input,
-            expectedOutput: tc.expectedOutput,
-            name: `Manual: ${tc.name || 'test'}`,
-          })),
-          ...generatedTestCases.map(tc => ({
-            input: tc.input,
-            expectedOutput: tc.expectedOutput,
-            name: `AI-${tc.category}: ${tc.description}`,
-          })),
-        ];
-
-        let executionResults: TestCaseResults = {
-          totalTests: 0,
-          passed: 0,
-          failed: 0,
-          accuracy: 0,
-          results: [],
-          totalExecutionTimeMs: 0,
-        };
-        let judge0Available = true;
-
-        try {
-          const [execResults, codePlagiarismResult] = await Promise.all([
-            allTestCases.length > 0
-              ? this.codeExecutionService.runTestCases({ code, language, testCases: allTestCases })
-              : Promise.resolve<TestCaseResults>(executionResults),
-            this.plagiarismService.checkPlagiarism(submissionId, submission.challengeId, code),
-          ]);
-          executionResults = execResults;
-          plagiarismResult = codePlagiarismResult;
-        } catch (execError) {
-          this.logger.warn(`Judge0 unavailable, falling back to LLM-only evaluation: ${execError}`);
-          judge0Available = false;
-          plagiarismResult = await this.plagiarismService.checkPlagiarism(
-            submissionId,
-            submission.challengeId,
-            code
-          );
-        }
-
-        if (judge0Available && allTestCases.length > 0) {
-          this.logger.log(
-            `Execution complete: ${executionResults.passed}/${executionResults.totalTests} passed (${executionResults.accuracy}%)`
-          );
-        } else if (judge0Available) {
-          this.logger.warn('No test cases available, scoring on code quality only');
-        }
-
-        let codeFeedback = 'Evaluation complete.';
-        let codeSuggestions: string[] = [];
-        let codeQualityScore = 70;
-        let codeQualityNotes = '';
-
-        try {
-          const feedbackResult = await this.testCaseGenerator.generateFeedback({
-            challengeTitle: submission.challenge.title,
-            challengeDescription: submission.challenge.description,
-            code,
-            language,
-            testResults: executionResults.results.map(r => ({
-              name: r.name,
-              passed: r.passed,
-              input: r.input,
-              expectedOutput: r.expectedOutput,
-              actualOutput: r.actualOutput,
-              error: r.error,
-            })),
-            accuracy: executionResults.accuracy,
-          });
-          codeFeedback = feedbackResult.feedback;
-          codeSuggestions = feedbackResult.suggestions;
-          codeQualityScore = feedbackResult.codeQualityScore;
-          codeQualityNotes = feedbackResult.codeQualityNotes;
-        } catch (error) {
-          this.logger.warn(`Feedback generation failed: ${error}`);
-        }
-
-        if (!judge0Available) {
-          // LLM-only fallback: score is purely code quality, lower confidence
-          overallScore = codeQualityScore;
-          criteriaScores = {
-            correctness: {
-              score: 0,
-              maxScore: 100,
-              feedback:
-                'Code execution unavailable (Judge0 unreachable). Correctness could not be verified.',
-            },
-            code_quality: {
-              score: codeQualityScore,
-              maxScore: 100,
-              feedback:
-                codeQualityNotes || 'Code quality analysis based on structure and patterns.',
-            },
-          };
-          feedback = codeFeedback;
-          suggestions = codeSuggestions;
-          confidence = 0.5;
-        } else {
-          const accuracyScore = executionResults.accuracy;
-
-          if (allTestCases.length > 0 && accuracyScore > 0) {
-            // Regular test cases passed — use standard scoring
-            overallScore = Math.round(accuracyScore * 0.6 + codeQualityScore * 0.4);
-            criteriaScores = {
-              correctness: {
-                score: Math.round(accuracyScore),
-                maxScore: 100,
-                feedback: `${executionResults.passed}/${executionResults.totalTests} test cases passed (${executionResults.accuracy}%)`,
-              },
-              code_quality: {
-                score: codeQualityScore,
-                maxScore: 100,
-                feedback:
-                  codeQualityNotes || 'Code quality analysis based on structure and patterns.',
-              },
-            };
-            feedback = codeFeedback;
-            suggestions = codeSuggestions;
-            confidence = 0.85;
-          } else if (
-            allTestCases.length > 0 &&
-            accuracyScore === 0 &&
-            executionResults.results.some(r => r.actualOutput != null)
-          ) {
-            // Code ran and produced output but 0% match — try property-based testing
-            // This handles non-deterministic challenges where exact matching fails
-            this.logger.log('0% accuracy but code produced output — trying property-based testing');
-            try {
-              const propertyTests = await this.testCaseGenerator.generatePropertyTests({
-                challengeTitle: submission.challenge.title,
-                challengeDescription: submission.challenge.description,
-                language,
-              });
-
-              if (propertyTests.length > 0) {
-                // Run candidate code for each property test input, then validate
-                let propertiesPassed = 0;
-                const propertyResults: Array<{ name: string; passed: boolean; reason?: string }> =
-                  [];
-
-                for (const pt of propertyTests) {
-                  // Execute code with this test's input
-                  const execResult = await this.codeExecutionService.executeCode({
-                    code,
-                    language,
-                    stdin: pt.input,
-                    timeLimit: 10,
-                  });
-
-                  const actualOutput = execResult.stdout || '';
-
-                  // Run validator
-                  if (pt.validator) {
-                    const validation = this.testCaseGenerator.runValidator(
-                      pt.validator,
-                      actualOutput,
-                      pt.input
-                    );
-                    propertyResults.push({
-                      name: pt.description,
-                      passed: validation.pass,
-                      reason: validation.reason,
-                    });
-                    if (validation.pass) propertiesPassed++;
-                  }
-                }
-
-                const propertyAccuracy = Math.round(
-                  (propertiesPassed / propertyTests.length) * 100
-                );
-
-                overallScore = Math.round(propertyAccuracy * 0.6 + codeQualityScore * 0.4);
-                criteriaScores = {
-                  property_tests: {
-                    score: propertyAccuracy,
-                    maxScore: 100,
-                    feedback: `${propertiesPassed}/${propertyTests.length} properties satisfied`,
-                  },
-                  code_quality: {
-                    score: codeQualityScore,
-                    maxScore: 100,
-                    feedback:
-                      codeQualityNotes || 'Code quality analysis based on structure and patterns.',
-                  },
-                };
-                feedback = `Property-based evaluation: ${propertiesPassed}/${propertyTests.length} properties passed. ${codeFeedback}`;
-                suggestions = [
-                  ...propertyResults
-                    .filter(r => !r.passed)
-                    .map(r => `Failed: ${r.name}${r.reason ? ` — ${r.reason}` : ''}`),
-                  ...codeSuggestions,
-                ];
-                confidence = 0.8;
-
-                // Update test results data with property results
-                testResultsData = {
-                  totalTests: propertyTests.length,
-                  passed: propertiesPassed,
-                  failed: propertyTests.length - propertiesPassed,
-                  accuracy: propertyAccuracy,
-                  results: propertyResults.map(r => ({
-                    name: r.name,
-                    passed: r.passed,
-                    input: '',
-                    expectedOutput: 'Property satisfied',
-                    actualOutput: r.passed ? 'Pass' : r.reason || 'Fail',
-                    status: r.passed ? 'Accepted' : 'Wrong Answer',
-                    time: null,
-                    memory: null,
-                    error: null,
-                  })),
-                  evaluationType: 'property-based',
-                };
-
-                this.logger.log(
-                  `Property-based testing: ${propertiesPassed}/${propertyTests.length} passed, score=${overallScore}`
-                );
-              } else {
-                // Property test generation failed — fall back to LLM text evaluation
-                this.logger.log(
-                  'Property test generation failed, falling back to LLM text evaluation'
-                );
-                const textResult = await this.testCaseGenerator.evaluateTextSubmission({
-                  challengeTitle: submission.challenge.title,
-                  challengeDescription: submission.challenge.description,
-                  candidateAnswer: code,
-                  referenceSolution: submission.challenge.referenceSolution || '',
-                  challengeType: 'CODING',
-                });
-                overallScore = textResult.overallScore;
-                criteriaScores = textResult.criteriaScores;
-                feedback = textResult.feedback;
-                suggestions = textResult.suggestions;
-                confidence = 0.7;
-              }
-            } catch (propError) {
-              this.logger.error(`Property-based testing failed: ${propError}`);
-              // Final fallback — LLM text evaluation
-              const textResult = await this.testCaseGenerator.evaluateTextSubmission({
-                challengeTitle: submission.challenge.title,
-                challengeDescription: submission.challenge.description,
-                candidateAnswer: code,
-                referenceSolution: submission.challenge.referenceSolution || '',
-                challengeType: 'CODING',
-              });
-              overallScore = textResult.overallScore;
-              criteriaScores = textResult.criteriaScores;
-              feedback = textResult.feedback;
-              suggestions = textResult.suggestions;
-              confidence = 0.7;
-            }
-          } else if (allTestCases.length === 0) {
-            // No test cases at all — LLM text evaluation
-            this.logger.log('No test cases available, using LLM text evaluation');
-            const textResult = await this.testCaseGenerator.evaluateTextSubmission({
-              challengeTitle: submission.challenge.title,
-              challengeDescription: submission.challenge.description,
-              candidateAnswer: code,
-              referenceSolution: submission.challenge.referenceSolution || '',
-              challengeType: 'CODING',
-            });
-            overallScore = textResult.overallScore;
-            criteriaScores = textResult.criteriaScores;
-            feedback = textResult.feedback;
-            suggestions = textResult.suggestions;
-            confidence = 0.7;
-          } else {
-            // Test cases exist but code didn't produce any output (crash/compile error)
-            overallScore = Math.round(codeQualityScore * 0.3);
-            criteriaScores = {
-              correctness: {
-                score: 0,
-                maxScore: 100,
-                feedback: 'Code failed to produce output for all test cases',
-              },
-              code_quality: {
-                score: codeQualityScore,
-                maxScore: 100,
-                feedback: codeQualityNotes || '',
-              },
-            };
-            feedback = codeFeedback;
-            suggestions = codeSuggestions;
-            confidence = 0.5;
-          }
-          testResultsData = {
-            totalTests: executionResults.totalTests,
-            passed: executionResults.passed,
-            failed: executionResults.failed,
-            accuracy: executionResults.accuracy,
-            results: executionResults.results,
-          };
-        }
-      } // end CODING branch
+        const embedding = await this.plagiarismService.generateEmbedding(code);
+        if (embedding) await this.plagiarismService.storeEmbedding(submissionId, embedding);
+      } catch (err) {
+        this.logger.warn(`Plagiarism check failed: ${err}`);
+      }
 
       const processingTimeMs = Date.now() - startTime;
 
-      // 9.5. Integrity analysis — AI detection, timing, and behavioral signals
-
-      // Extract behavioral metadata from submission files
-      let behavioralData: { pasteRatio?: number; timeSpentSeconds?: number } | null = null;
-      try {
-        const files = (submission as any).files;
-        if (Array.isArray(files)) {
-          const metaFile = files.find(
-            (f: any) => f.name === '_behavioral_metadata' || f.filename === '_behavioral_metadata'
-          );
-          if (metaFile) {
-            behavioralData =
-              typeof metaFile.content === 'string'
-                ? JSON.parse(metaFile.content)
-                : metaFile.content;
-          }
-        }
-      } catch (err) {
-        this.logger.debug(`Failed to parse behavioral metadata: ${err}`);
-      }
-
-      // AI detection via LLM
-      const aiDetection = await this.plagiarismService.detectAIGenerated(code, language);
-
-      // Time suspicion check
-      const timeSpentSeconds =
-        behavioralData?.timeSpentSeconds ?? Math.round(processingTimeMs / 1000); // fallback to processing time if no metadata
-      const difficulty = submission.challenge.difficulty || 'BEGINNER';
-      const timeSuspicion = this.plagiarismService.checkTimeSuspicion(
-        timeSpentSeconds,
-        difficulty,
-        code.length
-      );
-
-      // Paste ratio check
-      const pasteRatio = behavioralData?.pasteRatio ?? 0;
-
-      // Combine integrity signals
-      const integrityFlags: string[] = [];
-      if (plagiarismResult.flagged) integrityFlags.push('plagiarism');
-      if (aiDetection.isAI && aiDetection.confidence > 0.7) integrityFlags.push('ai_generated');
-      if (timeSuspicion.suspicious) integrityFlags.push('suspicious_timing');
-      if (pasteRatio > 0.8) integrityFlags.push('excessive_paste');
-
-      const integrityCompromised = integrityFlags.length >= 2;
-
-      if (integrityCompromised) {
-        this.logger.warn(
-          `Integrity compromised for ${submissionId}: ${integrityFlags.join(', ')} — zeroing score`
-        );
-        overallScore = 0;
-        feedback = `Submission integrity flagged: ${integrityFlags.join(', ')}. ${feedback}`;
-      } else if (plagiarismResult.flagged) {
+      if (plagiarismResult.flagged) {
         this.logger.warn(
           `Plagiarism detected for ${submissionId} via ${plagiarismResult.method}: zeroing score`
         );
@@ -636,18 +136,6 @@ export class EvaluationsService {
               mostSimilarSubmissionId: plagiarismResult.similarSubmissionId,
               method: plagiarismResult.method,
             },
-            aiDetection: {
-              isAI: aiDetection.isAI,
-              confidence: aiDetection.confidence,
-              reasons: aiDetection.reasons,
-            },
-            timeSuspicion: {
-              suspicious: timeSuspicion.suspicious,
-              reason: timeSuspicion.reason,
-            },
-            behavioral: behavioralData,
-            integrityFlags,
-            integrityCompromised,
           } as any,
           testResults: testResultsData as any,
           feedback,
@@ -656,8 +144,8 @@ export class EvaluationsService {
           processingTimeMs,
           modelVersions: {
             llmModel: 'llama-3.3-70b-versatile',
-            executionEngine: 'judge0-ce',
-            evaluationVersion: '2.0.0',
+            executionEngine: 'llm-only',
+            evaluationVersion: '3.0.0',
           },
         },
       });
