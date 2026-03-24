@@ -134,6 +134,12 @@ export class SubmissionsController {
     if (!candidateId) {
       return { error: 'User is not a candidate' };
     }
-    return this.submissionsService.submitForEvaluation(id, candidateId, dto.content, dto.language);
+    return this.submissionsService.submitForEvaluation(
+      id,
+      candidateId,
+      dto.content,
+      dto.language,
+      dto.files
+    );
   }
 }

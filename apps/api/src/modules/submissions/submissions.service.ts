@@ -113,7 +113,8 @@ export class SubmissionsService {
     submissionId: string,
     candidateId: string,
     content: string,
-    language?: string
+    language?: string,
+    files?: Array<{ name: string; content: string; type: string }>
   ) {
     const submission = await this.getSubmissionForCandidate(submissionId, candidateId);
 
@@ -147,6 +148,7 @@ export class SubmissionsService {
         status: 'SUBMITTED',
         submittedAt: now,
         timeSpentSeconds: timeSpent,
+        files: files ? (files as any) : undefined,
       },
       include: {
         challenge: {
