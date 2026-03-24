@@ -22,7 +22,9 @@ export class ChallengesController {
   constructor(private readonly challengesService: ChallengesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all challenges' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get challenges for the current candidate' })
   @ApiQuery({ name: 'skillId', required: false })
   @ApiQuery({
     name: 'difficulty',
@@ -34,6 +36,7 @@ export class ChallengesController {
   @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'List of challenges' })
   async findAll(
+    @Request() req: any,
     @Query('skillId') skillId?: string,
     @Query('difficulty') difficulty?: ChallengeDifficulty,
     @Query('type') type?: ChallengeType,
@@ -42,12 +45,14 @@ export class ChallengesController {
   ) {
     const limit = limitStr ? parseInt(limitStr, 10) : undefined;
     const offset = offsetStr ? parseInt(offsetStr, 10) : undefined;
+    const candidateId = req.user?.candidateProfileId;
     return this.challengesService.findAll({
       skillId,
       difficulty,
       type,
       limit,
       offset,
+      candidateId,
     });
   }
 
