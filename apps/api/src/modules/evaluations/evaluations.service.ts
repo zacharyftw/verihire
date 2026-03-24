@@ -167,74 +167,87 @@ export class EvaluationsService {
       // 13. Recalculate domain scores for this candidate
       const domainScores = await this.recalculateDomainScores(submission.candidateId);
 
-      // 14. Check if any domain now qualifies for a domain certificate
+      // 14. Check if ALL generated challenges are completed — if so, issue certificate
       let certificate: GeneratedCertificate | null = null;
-      const challengeDomain = submission.challenge.domainTag;
 
-      if (challengeDomain && domainScores[challengeDomain]) {
-        const ds = domainScores[challengeDomain];
-        // Domain certificate criteria: ≥3 challenges + score ≥70 + attempted INTERMEDIATE+
-        const diffWeight: Record<string, number> = {
-          BEGINNER: 1,
-          INTERMEDIATE: 2,
-          ADVANCED: 3,
-          EXPERT: 4,
-        };
-        const maxDiffWeight = diffWeight[ds.maxDifficulty] || 1;
-        const qualifies = ds.count >= 3 && ds.score >= 70 && maxDiffWeight >= 2;
+      // Count total generated challenges for this candidate and how many are evaluated
+      const candidateId = submission.candidateId;
+      const [totalChallenges, completedSubmissions] = await Promise.all([
+        prisma.challenge.count({ where: { generatedForCandidateId: candidateId } }),
+        prisma.submission.count({
+          where: { candidateId, status: 'EVALUATED', aiScore: { not: null } },
+        }),
+      ]);
 
-        if (qualifies) {
-          // Check if domain certificate already exists for this candidate + domain
-          const existingDomainCert = await prisma.certificate.findFirst({
+      if (totalChallenges > 0 && completedSubmissions >= totalChallenges) {
+        // All challenges completed — calculate overall average score
+        const allScores = Object.values(domainScores);
+        const totalWeightedScore = allScores.reduce((sum, ds) => sum + ds.score * ds.count, 0);
+        const totalCount = allScores.reduce((sum, ds) => sum + ds.count, 0);
+        const avgScore = totalCount > 0 ? Math.round(totalWeightedScore / totalCount) : 0;
+
+        // Determine overall level
+        let level: string;
+        if (avgScore >= 85) level = 'EXPERT';
+        else if (avgScore >= 70) level = 'ADVANCED';
+        else if (avgScore >= 60) level = 'INTERMEDIATE';
+        else level = 'BEGINNER';
+
+        if (avgScore >= 70) {
+          // Check if certificate already exists for this candidate
+          const existingCert = await prisma.certificate.findFirst({
             where: {
-              candidateId: submission.candidateId,
-              metadata: { path: ['domainTag'], equals: challengeDomain },
+              candidateId,
+              metadata: { path: ['certificateType'], equals: 'DOMAIN' },
             },
           });
 
-          if (!existingDomainCert) {
+          const topDomains = allScores
+            .sort((a, b) => b.score - a.score)
+            .map((_, i) => Object.keys(domainScores)[i]);
+
+          if (!existingCert) {
             certificate = await this.certificateService.generateCertificate({
-              candidateId: submission.candidateId,
+              candidateId,
               skillId: submission.challenge.skillId || submission.challengeId,
               challengeId: submission.challengeId,
               submissionId: submission.id,
-              finalScore: Math.round(ds.score),
-              aiScore: Math.round(ds.score),
+              finalScore: avgScore,
+              aiScore: avgScore,
               criteriaScores: {
-                domain_score: { score: Math.round(ds.score), maxScore: 100 },
-                challenges_completed: { score: ds.count, maxScore: 10 },
+                overall_score: { score: avgScore, maxScore: 100 },
+                challenges_completed: { score: completedSubmissions, maxScore: totalChallenges },
               },
               confidence,
-              domainTag: challengeDomain,
-              domainLevel: ds.level,
+              domainTag: topDomains[0] || 'General',
+              domainLevel: level,
             });
             this.logger.log(
-              `Domain certificate issued for ${challengeDomain}: ${ds.level} (score: ${ds.score}, ${ds.count} challenges)`
+              `Certificate issued: ${level} (avg score: ${avgScore}%, ${completedSubmissions}/${totalChallenges} challenges)`
             );
-          } else {
-            // Update existing domain certificate if score improved
-            if (ds.score > Number(existingDomainCert.finalScore)) {
-              await prisma.certificate.update({
-                where: { id: existingDomainCert.id },
-                data: {
-                  finalScore: Math.round(ds.score),
-                  metadata: {
-                    ...((existingDomainCert.metadata as any) || {}),
-                    domainTag: challengeDomain,
-                    domainLevel: ds.level,
-                    challengesCompleted: ds.count,
-                    lastUpdated: new Date().toISOString(),
-                  },
+          } else if (avgScore > Number(existingCert.finalScore)) {
+            await prisma.certificate.update({
+              where: { id: existingCert.id },
+              data: {
+                finalScore: avgScore,
+                metadata: {
+                  ...((existingCert.metadata as any) || {}),
+                  certificateType: 'DOMAIN',
+                  domainLevel: level,
+                  challengesCompleted: completedSubmissions,
+                  avgScore,
+                  domains: Object.keys(domainScores),
+                  lastUpdated: new Date().toISOString(),
                 },
-              });
-              this.logger.log(
-                `Domain certificate updated for ${challengeDomain}: ${ds.level} (score: ${ds.score})`
-              );
-            }
+              },
+            });
+            this.logger.log(`Certificate updated: ${level} (avg score: ${avgScore}%)`);
           }
+        } else {
+          this.logger.log(
+            `All challenges completed but avg score ${avgScore}% < 70% — no certificate`
+          );
         }
-      } else if (!challengeDomain) {
-        this.logger.log(`Skipping domain certificate check — challenge has no domainTag`);
       }
 
       const passed = overallScore >= 70;
