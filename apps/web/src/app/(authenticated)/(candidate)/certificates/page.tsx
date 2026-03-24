@@ -13,7 +13,7 @@ import { ROUTES } from '@/lib/constants';
 
 export default function CertificatesPage() {
   const { data, isLoading } = useMyCertificates();
-  const certificates = data?.items || [];
+  const certificates = data?.certificates || [];
 
   function handleShare(certNumber: string) {
     const url = `${window.location.origin}${ROUTES.verify(certNumber)}`;

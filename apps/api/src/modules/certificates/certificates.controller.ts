@@ -72,15 +72,22 @@ export class CertificatesController {
   // ==========================================================================
 
   @Get()
-  @ApiOperation({ summary: 'List certificates with optional filtering' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List certificates for the current user' })
   @ApiResponse({
     status: 200,
     description: 'List of certificates',
     type: CertificateListResponseDto,
   })
   async listCertificates(
+    @Request() req: any,
     @Query() query: ListCertificatesQueryDto
   ): Promise<CertificateListResponseDto> {
+    const candidateId = req.user?.candidateProfileId;
+    if (candidateId) {
+      query.candidateId = candidateId;
+    }
     return this.certificatesService.listCertificates(query);
   }
 

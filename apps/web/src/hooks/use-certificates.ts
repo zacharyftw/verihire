@@ -3,7 +3,9 @@ import type { Certificate } from '@/lib/types';
 import { API_URL } from '@/lib/constants';
 
 export function useMyCertificates() {
-  return useSWR<{ items: Certificate[]; pagination: { total: number } }>('/certificates');
+  return useSWR<{ certificates: Certificate[]; total: number; page: number; limit: number }>(
+    '/certificates'
+  );
 }
 
 export function useCertificate(id: string | undefined) {
