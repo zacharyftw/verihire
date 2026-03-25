@@ -5,8 +5,9 @@ import { randomBytes, createHash } from 'crypto';
 export interface CertificateData {
   candidateId: string;
   skillId?: string | null;
-  challengeId: string;
-  submissionId: string;
+  challengeId?: string | null;
+  submissionId?: string | null;
+  jobApplicationId?: string | null;
   finalScore: number;
   aiScore: number;
   peerScore?: number;
@@ -14,6 +15,7 @@ export interface CertificateData {
   confidence: number;
   domainTag?: string;
   domainLevel?: string;
+  title?: string;
 }
 
 export interface GeneratedCertificate {
@@ -77,13 +79,19 @@ export class CertificateService {
       return null;
     }
 
-    // Check if certificate already exists for this submission
+    // Check if certificate already exists for this submission or job application
     const existing = await prisma.certificate.findFirst({
-      where: { submissionId: data.submissionId },
+      where: data.jobApplicationId
+        ? { jobApplicationId: data.jobApplicationId }
+        : data.submissionId
+          ? { submissionId: data.submissionId }
+          : { id: '__never__' },
     });
 
     if (existing) {
-      this.logger.log(`Certificate already exists for submission ${data.submissionId}`);
+      this.logger.log(
+        `Certificate already exists for ${data.jobApplicationId ? `job application ${data.jobApplicationId}` : `submission ${data.submissionId}`}`
+      );
       return {
         id: existing.id,
         certificateNumber: existing.certificateNumber,
@@ -102,6 +110,16 @@ export class CertificateService {
     const certificateNumber = this.generateCertificateNumber();
     const grade = this.calculateGrade(data.finalScore);
 
+    // Look up skill name for non-domain certificates
+    let skillName: string | null = null;
+    if (data.skillId) {
+      const skill = await prisma.skill.findUnique({
+        where: { id: data.skillId },
+        select: { name: true },
+      });
+      skillName = skill?.name ?? null;
+    }
+
     try {
       // Generate cryptographic data for verification
       const hash = createHash('sha256')
@@ -118,8 +136,9 @@ export class CertificateService {
           certificateNumber,
           candidateId: data.candidateId,
           skillId: data.skillId,
-          challengeId: data.challengeId,
-          submissionId: data.submissionId,
+          challengeId: data.challengeId ?? undefined,
+          submissionId: data.submissionId ?? undefined,
+          jobApplicationId: data.jobApplicationId ?? undefined,
           finalScore: data.finalScore,
           aiScore: data.aiScore,
           peerScore: data.peerScore,
@@ -137,15 +156,22 @@ export class CertificateService {
             ? {
                 domainTag: data.domainTag,
                 domainLevel: data.domainLevel || grade,
-                certificateType: 'DOMAIN',
-                title: `Certified ${data.domainTag} Developer — ${data.domainLevel || grade}`,
+                certificateType: data.jobApplicationId ? 'JOB_APPLICATION' : 'DOMAIN',
+                title:
+                  data.title ||
+                  `Certified ${data.domainTag} Developer — ${data.domainLevel || grade}`,
               }
-            : { certificateType: 'CHALLENGE' },
+            : {
+                certificateType: 'CHALLENGE',
+                title:
+                  data.title ||
+                  (skillName ? `${skillName} — ${grade}` : `Challenge Certificate — ${grade}`),
+              },
         },
       });
 
       this.logger.log(
-        `Certificate ${certificateNumber} generated for submission ${data.submissionId}`
+        `Certificate ${certificateNumber} generated for ${data.jobApplicationId ? `job application ${data.jobApplicationId}` : `submission ${data.submissionId}`}`
       );
 
       // Update candidate's skill level if they have this skill
@@ -225,10 +251,12 @@ export class CertificateService {
           name: `${certificate.candidate.user.firstName} ${certificate.candidate.user.lastName}`,
         },
         skill: certificate.skill,
-        challenge: {
-          title: certificate.challenge.title,
-          difficulty: certificate.challenge.difficulty,
-        },
+        challenge: certificate.challenge
+          ? {
+              title: certificate.challenge.title,
+              difficulty: certificate.challenge.difficulty,
+            }
+          : null,
       },
     };
   }

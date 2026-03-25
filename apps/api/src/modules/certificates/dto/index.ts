@@ -202,6 +202,9 @@ export class MetadataInfoDto {
 
   @ApiProperty()
   standard: string;
+
+  @ApiPropertyOptional({ description: 'Human-readable certificate title' })
+  title?: string;
 }
 
 export class CertificateResponseDto {

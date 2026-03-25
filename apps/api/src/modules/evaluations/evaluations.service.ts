@@ -185,88 +185,97 @@ export class EvaluationsService {
         // 13b. Check if this challenge belongs to a job application
         await this.checkJobApplicationCompletion(submission.challenge);
 
-        // 14. Check if ALL generated challenges are completed — if so, issue certificate
-        const candidateId = submission.candidateId;
-        const [totalChallenges, completedSubmissions] = await Promise.all([
-          prisma.challenge.count({ where: { generatedForCandidateId: candidateId } }),
-          prisma.submission.count({
-            where: {
-              candidateId,
-              status: 'EVALUATED',
-              aiScore: { not: null },
-              challenge: { generatedForCandidateId: candidateId },
-            },
-          }),
-        ]);
-
-        if (totalChallenges > 0 && completedSubmissions >= totalChallenges) {
-          // All challenges completed — calculate overall average score
-          const allScores = Object.values(domainScores);
-          const totalWeightedScore = allScores.reduce((sum, ds) => sum + ds.score * ds.count, 0);
-          const totalCount = allScores.reduce((sum, ds) => sum + ds.count, 0);
-          const avgScore = totalCount > 0 ? Math.round(totalWeightedScore / totalCount) : 0;
-
-          // Determine overall level
-          let level: string;
-          if (avgScore >= 85) level = 'EXPERT';
-          else if (avgScore >= 70) level = 'ADVANCED';
-          else if (avgScore >= 60) level = 'INTERMEDIATE';
-          else level = 'BEGINNER';
-
-          if (avgScore >= 70) {
-            // Check if certificate already exists for this candidate
-            const existingCert = await prisma.certificate.findFirst({
+        // 14. Check if ALL generated challenges are completed — if so, issue legacy domain certificate.
+        //     Skip for challenges tied to a job application — those get a per-application certificate
+        //     via checkJobApplicationCompletion above.
+        if (!submission.challenge.jobApplicationId) {
+          const candidateId = submission.candidateId;
+          const [totalChallenges, completedSubmissions] = await Promise.all([
+            prisma.challenge.count({ where: { generatedForCandidateId: candidateId } }),
+            prisma.submission.count({
               where: {
                 candidateId,
-                metadata: { path: ['certificateType'], equals: 'DOMAIN' },
+                status: 'EVALUATED',
+                aiScore: { not: null },
+                challenge: { generatedForCandidateId: candidateId },
               },
-            });
+            }),
+          ]);
 
-            const sortedDomains = Object.entries(domainScores)
-              .sort(([, a], [, b]) => b.score - a.score)
-              .map(([domain]) => domain);
+          if (totalChallenges > 0 && completedSubmissions >= totalChallenges) {
+            // All challenges completed — calculate overall average score
+            const allScores = Object.values(domainScores);
+            const totalWeightedScore = allScores.reduce((sum, ds) => sum + ds.score * ds.count, 0);
+            const totalCount = allScores.reduce((sum, ds) => sum + ds.count, 0);
+            const avgScore = totalCount > 0 ? Math.round(totalWeightedScore / totalCount) : 0;
 
-            if (!existingCert) {
-              certificate = await this.certificateService.generateCertificate({
-                candidateId,
-                skillId: submission.challenge.skillId ?? null,
-                challengeId: submission.challengeId,
-                submissionId: submission.id,
-                finalScore: avgScore,
-                aiScore: avgScore,
-                criteriaScores: {
-                  overall_score: { score: avgScore, maxScore: 100 },
-                  challenges_completed: { score: completedSubmissions, maxScore: totalChallenges },
+            // Determine overall level
+            let level: string;
+            if (avgScore >= 85) level = 'EXPERT';
+            else if (avgScore >= 70) level = 'ADVANCED';
+            else if (avgScore >= 60) level = 'INTERMEDIATE';
+            else level = 'BEGINNER';
+
+            if (avgScore >= 70) {
+              // Check if certificate already exists for this candidate
+              const existingCert = await prisma.certificate.findFirst({
+                where: {
+                  candidateId,
+                  metadata: { path: ['certificateType'], equals: 'DOMAIN' },
                 },
-                confidence,
-                domainTag: sortedDomains[0] || 'General',
-                domainLevel: level,
               });
-              this.logger.log(
-                `Certificate issued: ${level} (avg score: ${avgScore}%, ${completedSubmissions}/${totalChallenges} challenges)`
-              );
-            } else if (avgScore > Number(existingCert.finalScore)) {
-              await prisma.certificate.update({
-                where: { id: existingCert.id },
-                data: {
+
+              const sortedDomains = Object.entries(domainScores)
+                .sort(([, a], [, b]) => b.score - a.score)
+                .map(([domain]) => domain);
+
+              if (!existingCert) {
+                certificate = await this.certificateService.generateCertificate({
+                  candidateId,
+                  skillId: submission.challenge.skillId ?? null,
+                  challengeId: submission.challengeId,
+                  submissionId: submission.id,
                   finalScore: avgScore,
-                  metadata: {
-                    ...((existingCert.metadata as any) || {}),
-                    certificateType: 'DOMAIN',
-                    domainLevel: level,
-                    challengesCompleted: completedSubmissions,
-                    avgScore,
-                    domains: Object.keys(domainScores),
-                    lastUpdated: new Date().toISOString(),
+                  aiScore: avgScore,
+                  criteriaScores: {
+                    overall_score: { score: avgScore, maxScore: 100 },
+                    challenges_completed: {
+                      score: completedSubmissions,
+                      maxScore: totalChallenges,
+                    },
                   },
-                },
-              });
-              this.logger.log(`Certificate updated: ${level} (avg score: ${avgScore}%)`);
+                  confidence,
+                  domainTag: sortedDomains[0] || 'General',
+                  domainLevel: level,
+                });
+                this.logger.log(
+                  `Certificate issued: ${level} (avg score: ${avgScore}%, ${completedSubmissions}/${totalChallenges} challenges)`
+                );
+              } else if (avgScore > Number(existingCert.finalScore)) {
+                const topDomain = sortedDomains[0] || 'General';
+                await prisma.certificate.update({
+                  where: { id: existingCert.id },
+                  data: {
+                    finalScore: avgScore,
+                    metadata: {
+                      ...((existingCert.metadata as any) || {}),
+                      certificateType: 'DOMAIN',
+                      domainLevel: level,
+                      title: `Certified ${topDomain} Developer — ${level}`,
+                      challengesCompleted: completedSubmissions,
+                      avgScore,
+                      domains: Object.keys(domainScores),
+                      lastUpdated: new Date().toISOString(),
+                    },
+                  },
+                });
+                this.logger.log(`Certificate updated: ${level} (avg score: ${avgScore}%)`);
+              }
+            } else {
+              this.logger.log(
+                `All challenges completed but avg score ${avgScore}% < 70% — no certificate`
+              );
             }
-          } else {
-            this.logger.log(
-              `All challenges completed but avg score ${avgScore}% < 70% — no certificate`
-            );
           }
         }
       } catch (postError) {

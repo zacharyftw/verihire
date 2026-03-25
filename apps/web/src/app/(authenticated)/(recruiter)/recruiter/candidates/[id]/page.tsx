@@ -198,7 +198,10 @@ export default function CandidateDetailPage() {
                         <Award className="h-4 w-4 text-primary" />
                         <div>
                           <p className="text-sm font-medium">
-                            {cert.challenge?.title || cert.skill?.name || 'Certificate'}
+                            {(cert as any).metadata?.title ??
+                              cert.skill?.name ??
+                              cert.challenge?.title ??
+                              'Certificate'}
                           </p>
                           <p className="text-xs text-muted-foreground">#{cert.certificateNumber}</p>
                         </div>

@@ -563,7 +563,7 @@ export class CertificatesService {
     challenge: {
       id: string;
       title: string;
-    };
+    } | null;
     finalScore: unknown;
     percentile: unknown;
     grade: string;
@@ -605,8 +605,9 @@ export class CertificatesService {
     };
 
     const evaluation: EvaluationInfoDto = {
-      challengeId: certificate.challenge.id,
-      challengeTitle: certificate.challenge.title,
+      challengeId: certificate.challenge?.id ?? '',
+      challengeTitle:
+        certificate.challenge?.title ?? (metadata.title as string) ?? 'Job Application Assessment',
       score: Number(certificate.finalScore),
       percentile: certificate.percentile ? Number(certificate.percentile) : undefined,
       grade: certificate.grade,
@@ -634,6 +635,7 @@ export class CertificatesService {
     const metadataInfo: MetadataInfoDto = {
       issuer: (metadata.issuer as string) ?? this.issuerName,
       standard: (metadata.standard as string) ?? this.certificateStandard,
+      title: (metadata.title as string) ?? undefined,
     };
 
     return {

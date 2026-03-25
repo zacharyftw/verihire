@@ -49,7 +49,9 @@ export default function CertificatesPage() {
                   <Award className="h-5 w-5" />
                   <span className="text-sm font-medium">VeriHire Certificate</span>
                 </div>
-                <p className="mt-2 text-lg font-bold">{cert.skill?.name || 'Skill Certificate'}</p>
+                <p className="mt-2 text-lg font-bold">
+                  {(cert as any).metadata?.title ?? cert.skill?.name ?? 'Skill Certificate'}
+                </p>
               </div>
               <CardContent className="space-y-3 p-4">
                 <div className="flex items-center justify-between text-sm">

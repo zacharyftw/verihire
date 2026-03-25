@@ -171,8 +171,8 @@ export class VerificationService {
     hash: string;
     candidateId: string;
     skillId: string | null;
-    challengeId: string;
-    submissionId: string;
+    challengeId: string | null;
+    submissionId: string | null;
     finalScore: unknown;
     percentile: unknown;
     grade: string;
@@ -184,7 +184,7 @@ export class VerificationService {
     expiresAt: Date | null;
     candidate: { user: { email: string; firstName: string | null; lastName: string | null } };
     skill: { name: string; category: { name: string } | null } | null;
-    challenge: { title: string };
+    challenge: { title: string } | null;
   }): Promise<VerificationStepDto> {
     try {
       // Reconstruct the certificate data that was hashed
@@ -203,9 +203,9 @@ export class VerificationService {
         skillName: certificate.skill?.name ?? 'General',
         skillCategory: certificate.skill?.category?.name ?? 'General',
         skillLevel: this.determineSkillLevel(Number(certificate.finalScore)),
-        challengeId: certificate.challengeId,
-        challengeTitle: certificate.challenge.title,
-        submissionId: certificate.submissionId,
+        challengeId: certificate.challengeId ?? '',
+        challengeTitle: certificate.challenge?.title ?? '',
+        submissionId: certificate.submissionId ?? '',
         score: Number(certificate.finalScore),
         percentile: certificate.percentile ? Number(certificate.percentile) : undefined,
         grade: certificate.grade,

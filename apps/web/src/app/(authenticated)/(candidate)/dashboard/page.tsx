@@ -219,7 +219,10 @@ export default function CandidateDashboardPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {cert.skill?.name ?? cert.challenge?.title ?? 'Certificate'}
+                        {(cert as any).metadata?.title ??
+                          cert.skill?.name ??
+                          cert.challenge?.title ??
+                          'Certificate'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         #{cert.certificateNumber} &middot; Issued{' '}
