@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { decodeJwt } from 'jose';
 import { useAuth } from '@/lib/auth-context';
+import { getTokens } from '@/lib/api';
 import { loginSchema, type LoginValues } from '@/lib/validations';
 import { ROUTES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -45,7 +47,16 @@ function LoginPageInner() {
     try {
       await login(values);
       const redirect = searchParams.get('redirect');
-      router.push(redirect || ROUTES.candidateDashboard);
+      if (redirect) {
+        router.push(redirect);
+      } else {
+        const tokens = getTokens();
+        const payload = tokens?.accessToken ? decodeJwt(tokens.accessToken) : null;
+        const userType = payload?.userType as string | undefined;
+        router.push(
+          userType === 'RECRUITER' ? ROUTES.recruiterDashboard : ROUTES.candidateDashboard
+        );
+      }
     } catch (err) {
       toast({
         title: 'Login failed',

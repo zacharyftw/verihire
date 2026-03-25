@@ -35,25 +35,37 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
-    // Create user
-    const user = await this.usersService.create({
-      email: dto.email,
-      password: dto.password,
-      firstName: dto.firstName,
-      lastName: dto.lastName,
-      userType: dto.userType,
-    });
+    // Create user, profile, and role in a transaction
+    const user = await prisma.$transaction(async tx => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: dto.email.toLowerCase(),
+          passwordHash: await import('bcrypt').then(b => b.hash(dto.password, 12)),
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          userType: dto.userType,
+          emailVerified: false,
+        },
+      });
 
-    // Create candidate or recruiter profile
-    if (dto.userType === 'CANDIDATE') {
-      await prisma.candidateProfile.create({
-        data: { userId: user.id },
+      // Create candidate or recruiter profile
+      if (dto.userType === 'CANDIDATE') {
+        await tx.candidateProfile.create({
+          data: { userId: createdUser.id },
+        });
+      } else if (dto.userType === 'RECRUITER') {
+        await tx.recruiterProfile.create({
+          data: { userId: createdUser.id },
+        });
+      }
+
+      // Create user role
+      await tx.userRole.create({
+        data: { userId: createdUser.id, role: dto.userType },
       });
-    } else if (dto.userType === 'RECRUITER') {
-      await prisma.recruiterProfile.create({
-        data: { userId: user.id },
-      });
-    }
+
+      return createdUser;
+    });
 
     // Generate tokens
     return this.generateAuthResponse(user);
@@ -171,7 +183,10 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return user;
+    return {
+      ...user,
+      mfaEnabled: false,
+    };
   }
 
   private async generateAuthResponse(user: User, existingSessionId?: string) {
@@ -227,6 +242,7 @@ export class AuthService {
         lastName: user.lastName,
         avatarUrl: user.avatarUrl,
         userType: user.userType,
+        mfaEnabled: false,
         roles: roles.map((r: { role: string }) => r.role),
       },
       tokens: {
