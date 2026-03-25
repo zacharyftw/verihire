@@ -362,6 +362,16 @@ export class CandidatesController {
     return this.candidatesService.deletePortfolioFile(candidateId, decodedKey);
   }
 
+  @Get(':id/profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get candidate profile for recruiter view' })
+  @ApiResponse({ status: 200, description: 'Candidate profile' })
+  @ApiResponse({ status: 404, description: 'Candidate not found' })
+  async getCandidateProfile(@Param('id') id: string): Promise<unknown> {
+    return this.candidatesService.getProfileForRecruiter(id);
+  }
+
   @Get(':id/resume-analysis')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

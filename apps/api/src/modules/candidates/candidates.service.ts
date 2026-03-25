@@ -388,9 +388,7 @@ export class CandidatesService {
     const limit = options.limit ?? 20;
     const offset = options.offset ?? 0;
 
-    const where: Record<string, unknown> = {
-      portfolioPublic: true,
-    };
+    const where: Record<string, unknown> = {};
 
     if (minExperience !== undefined || maxExperience !== undefined) {
       where.yearsExperience = {};
@@ -401,7 +399,10 @@ export class CandidatesService {
     }
 
     if (locations && locations.length > 0) {
-      where.OR = [{ locationCity: { in: locations } }, { locationCountry: { in: locations } }];
+      where.OR = locations.flatMap(loc => [
+        { locationCity: { contains: loc, mode: 'insensitive' } },
+        { locationCountry: { contains: loc, mode: 'insensitive' } },
+      ]);
     }
 
     if (remotePreference) {
@@ -460,7 +461,7 @@ export class CandidatesService {
     ]);
 
     return {
-      data: candidates.map(c => ({
+      items: candidates.map(c => ({
         ...c,
         domainScores: c.domainScores || {},
       })),
@@ -470,6 +471,58 @@ export class CandidatesService {
         offset,
         hasMore: offset + candidates.length < total,
       },
+    };
+  }
+
+  async getProfileForRecruiter(candidateId: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatarUrl: true,
+          },
+        },
+        candidateSkills: {
+          include: {
+            skill: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+        certificates: {
+          where: { revokedAt: null },
+          include: {
+            challenge: { select: { title: true } },
+            skill: { select: { name: true } },
+          },
+          orderBy: { issuedAt: 'desc' },
+        },
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Candidate not found');
+    }
+
+    return {
+      ...profile,
+      skills: profile.candidateSkills.map(cs => ({
+        skillId: cs.skillId,
+        skill: cs.skill,
+        verifiedLevel: cs.level,
+      })),
+      certificates: profile.certificates.map(cert => ({
+        id: cert.id,
+        certificateNumber: cert.certificateNumber,
+        challenge: cert.challenge,
+        skill: cert.skill,
+        score: Number(cert.finalScore),
+      })),
     };
   }
 

@@ -38,8 +38,8 @@ type CandidateRow = {
   locationCity?: string;
   yearsExperience?: number;
   remotePreference?: string;
-  skills?: Array<{ skillId: string; skill?: { name: string } }>;
-  certificateCount?: number;
+  candidateSkills?: Array<{ skillId: string; skill?: { name: string } }>;
+  _count?: { certificates: number };
 };
 
 export default function RecruiterDashboardPage() {
@@ -54,15 +54,13 @@ export default function RecruiterDashboardPage() {
 
   const { data: candidateData, isLoading: candidatesLoading } = useCandidateSearch({
     locations: debouncedSearch ? [debouncedSearch] : undefined,
-    remotePreference: remotePreference || undefined,
-    minExperience: minExperience ? parseInt(minExperience) : undefined,
+    remotePreference: remotePreference && remotePreference !== 'all' ? remotePreference : undefined,
+    minExperience: minExperience && minExperience !== 'all' ? parseInt(minExperience) : undefined,
     verifiedOnly: verifiedOnly || undefined,
     limit: 20,
   });
 
-  const candidates: CandidateRow[] = (candidateData?.items ??
-    candidateData ??
-    []) as CandidateRow[];
+  const candidates: CandidateRow[] = (candidateData?.items ?? []) as CandidateRow[];
 
   const stats = [
     { label: 'Active Jobs', value: data?.activeJobs ?? 0, icon: Briefcase },
@@ -210,23 +208,23 @@ export default function RecruiterDashboardPage() {
                       </td>
                       <td className="py-3 pr-4">
                         <div className="flex flex-wrap gap-1">
-                          {c.skills?.slice(0, 3).map(s => (
+                          {c.candidateSkills?.slice(0, 3).map(s => (
                             <Badge key={s.skillId} variant="secondary" className="text-xs">
                               {s.skill?.name || s.skillId}
                             </Badge>
                           ))}
-                          {(c.skills?.length ?? 0) > 3 && (
+                          {(c.candidateSkills?.length ?? 0) > 3 && (
                             <Badge variant="outline" className="text-xs">
-                              +{c.skills!.length - 3}
+                              +{c.candidateSkills!.length - 3}
                             </Badge>
                           )}
                         </div>
                       </td>
                       <td className="py-3">
-                        {c.certificateCount != null && c.certificateCount > 0 ? (
+                        {(c._count?.certificates ?? 0) > 0 ? (
                           <span className="flex items-center gap-1 text-green-600">
                             <Award className="h-3 w-3" />
-                            {c.certificateCount}
+                            {c._count!.certificates}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
