@@ -219,7 +219,7 @@ export class EvaluationsService {
             if (!existingCert) {
               certificate = await this.certificateService.generateCertificate({
                 candidateId,
-                skillId: submission.challenge.skillId || submission.challengeId,
+                skillId: submission.challenge.skillId ?? null,
                 challengeId: submission.challengeId,
                 submissionId: submission.id,
                 finalScore: avgScore,

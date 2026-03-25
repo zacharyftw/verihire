@@ -52,12 +52,14 @@ export class RevocationService {
     });
 
     // Update skill's certification count
-    await prisma.skill.update({
-      where: { id: certificate.skillId },
-      data: {
-        totalCertifications: { decrement: 1 },
-      },
-    });
+    if (certificate.skillId) {
+      await prisma.skill.update({
+        where: { id: certificate.skillId },
+        data: {
+          totalCertifications: { decrement: 1 },
+        },
+      });
+    }
 
     this.logger.log(`Certificate ${certificate.certificateNumber} revoked: ${reason}`);
   }
@@ -140,13 +142,15 @@ export class RevocationService {
       },
     });
 
-    // Update skill's certification count
-    await prisma.skill.update({
-      where: { id: certificate.skillId },
-      data: {
-        totalCertifications: { increment: 1 },
-      },
-    });
+    // Update skill's certification count (only if certificate has a linked skill)
+    if (certificate.skillId) {
+      await prisma.skill.update({
+        where: { id: certificate.skillId },
+        data: {
+          totalCertifications: { increment: 1 },
+        },
+      });
+    }
 
     this.logger.log(`Certificate ${certificate.certificateNumber} reinstated: ${reason}`);
   }
@@ -219,7 +223,7 @@ export class RevocationService {
       revokedAt: Date;
       revocationReason: string | null;
       candidateId: string;
-      skillId: string;
+      skillId: string | null;
     }>;
     total: number;
   }> {

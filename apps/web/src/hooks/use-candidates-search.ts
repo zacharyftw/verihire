@@ -29,7 +29,7 @@ function buildQuery(filters: CandidateSearchFilters) {
   return qs ? `?${qs}` : '';
 }
 
-export function useCandidateSearch(filters: CandidateSearchFilters) {
+export function useCandidateSearch(filters: CandidateSearchFilters = {}) {
   const query = buildQuery(filters);
-  return useSWR(query ? `/candidates/search${query}` : null);
+  return useSWR(`/candidates/search${query}`);
 }

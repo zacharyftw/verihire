@@ -4,7 +4,7 @@ import { randomBytes, createHash } from 'crypto';
 
 export interface CertificateData {
   candidateId: string;
-  skillId: string;
+  skillId?: string | null;
   challengeId: string;
   submissionId: string;
   finalScore: number;
@@ -94,7 +94,9 @@ export class CertificateService {
     }
 
     // Calculate percentile (would need more data in production)
-    const percentile = await this.calculatePercentile(data.skillId, data.finalScore);
+    const percentile = data.skillId
+      ? await this.calculatePercentile(data.skillId, data.finalScore)
+      : 100;
 
     // Generate certificate
     const certificateNumber = this.generateCertificateNumber();
@@ -147,13 +149,15 @@ export class CertificateService {
       );
 
       // Update candidate's skill level if they have this skill
-      await this.updateCandidateSkillLevel(
-        data.candidateId,
-        data.skillId,
-        certificate.id,
-        grade,
-        data.domainLevel
-      );
+      if (data.skillId) {
+        await this.updateCandidateSkillLevel(
+          data.candidateId,
+          data.skillId,
+          certificate.id,
+          grade,
+          data.domainLevel
+        );
+      }
 
       return {
         id: certificate.id,

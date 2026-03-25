@@ -559,7 +559,7 @@ export class CertificatesService {
       id: string;
       name: string;
       category: { name: string } | null;
-    };
+    } | null;
     challenge: {
       id: string;
       title: string;
@@ -598,9 +598,9 @@ export class CertificatesService {
     };
 
     const skill: SkillInfoDto = {
-      id: certificate.skill.id,
-      name: certificate.skill.name,
-      category: certificate.skill.category?.name ?? 'General',
+      id: certificate.skill?.id ?? '',
+      name: certificate.skill?.name ?? 'General',
+      category: certificate.skill?.category?.name ?? 'General',
       level: (metadata.skillLevel as string) ?? 'intermediate',
     };
 

@@ -170,7 +170,7 @@ export class VerificationService {
   private async verifyHashIntegrity(certificate: {
     hash: string;
     candidateId: string;
-    skillId: string;
+    skillId: string | null;
     challengeId: string;
     submissionId: string;
     finalScore: unknown;
@@ -183,7 +183,7 @@ export class VerificationService {
     issuedAt: Date;
     expiresAt: Date | null;
     candidate: { user: { email: string; firstName: string | null; lastName: string | null } };
-    skill: { name: string; category: { name: string } | null };
+    skill: { name: string; category: { name: string } | null } | null;
     challenge: { title: string };
   }): Promise<VerificationStepDto> {
     try {
@@ -199,9 +199,9 @@ export class VerificationService {
         candidateId: certificate.candidateId,
         candidateName: candidateName || 'Unknown',
         candidateEmailHash: this.cryptoService.hashEmail(certificate.candidate.user.email),
-        skillId: certificate.skillId,
-        skillName: certificate.skill.name,
-        skillCategory: certificate.skill.category?.name ?? 'General',
+        skillId: certificate.skillId ?? '',
+        skillName: certificate.skill?.name ?? 'General',
+        skillCategory: certificate.skill?.category?.name ?? 'General',
         skillLevel: this.determineSkillLevel(Number(certificate.finalScore)),
         challengeId: certificate.challengeId,
         challengeTitle: certificate.challenge.title,

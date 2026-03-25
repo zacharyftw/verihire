@@ -317,7 +317,7 @@ export class CertificatesController {
       revokedAt: Date;
       revocationReason: string | null;
       candidateId: string;
-      skillId: string;
+      skillId: string | null;
     }>;
     total: number;
   }> {
