@@ -2,25 +2,16 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class RecruiterDashboardDto {
   @ApiProperty()
-  totalJobs: number;
-
-  @ApiProperty()
   activeJobs: number;
 
   @ApiProperty()
-  totalShortlisted: number;
+  totalCandidates: number;
 
   @ApiProperty()
-  totalInterviewing: number;
+  totalViews: number;
 
   @ApiProperty()
-  totalHired: number;
-
-  @ApiProperty()
-  avgTimeToHire: number;
-
-  @ApiProperty()
-  recentActivity: ActivityItem[];
+  hireRate: number;
 }
 
 export class ActivityItem {

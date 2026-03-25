@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { prisma } from '@verihire/database';
 import {
   RecruiterDashboardDto,
-  ActivityItem,
   RecruiterJobMetricsDto,
   PlatformStatsDto,
 } from './dto/analytics.dto';
@@ -10,82 +9,20 @@ import {
 @Injectable()
 export class AnalyticsService {
   async getRecruiterDashboard(recruiterId: string): Promise<RecruiterDashboardDto> {
-    const [totalJobs, activeJobs, shortlists, interviewing, hired] = await Promise.all([
-      prisma.job.count({
-        where: { recruiterId },
-      }),
-      prisma.job.count({
-        where: { recruiterId, status: 'ACTIVE' },
-      }),
-      prisma.shortlist.count({
-        where: { recruiterId },
-      }),
-      prisma.shortlist.count({
-        where: { recruiterId, stage: 'INTERVIEW' },
-      }),
-      prisma.shortlist.count({
-        where: { recruiterId, stage: 'HIRED' },
-      }),
+    const [activeJobs, totalCandidates, shortlists, hired] = await Promise.all([
+      prisma.job.count({ where: { recruiterId, status: 'ACTIVE' } }),
+      prisma.candidateProfile.count(),
+      prisma.shortlist.count({ where: { recruiterId } }),
+      prisma.shortlist.count({ where: { recruiterId, stage: 'HIRED' } }),
     ]);
 
-    // Calculate avg time to hire
-    const hiredCandidates = await prisma.shortlist.findMany({
-      where: { recruiterId, stage: 'HIRED' },
-      select: {
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    const avgTimeToHire =
-      hiredCandidates.length > 0
-        ? hiredCandidates.reduce(
-            (acc, s) => acc + (s.updatedAt.getTime() - s.createdAt.getTime()),
-            0
-          ) /
-          hiredCandidates.length /
-          (1000 * 60 * 60 * 24)
-        : 0;
-
-    // Get recent activity
-    const recentShortlists = await prisma.shortlist.findMany({
-      where: { recruiterId },
-      include: {
-        candidate: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        job: {
-          select: {
-            title: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-
-    const recentActivity: ActivityItem[] = recentShortlists.map(s => ({
-      id: s.id,
-      type: 'shortlist',
-      message: `${s.candidate.user.firstName} ${s.candidate.user.lastName} moved to ${s.stage} for ${s.job.title}`,
-      timestamp: s.updatedAt,
-    }));
+    const hireRate = shortlists > 0 ? Math.round((hired / shortlists) * 100) : 0;
 
     return {
-      totalJobs,
       activeJobs,
-      totalShortlisted: shortlists,
-      totalInterviewing: interviewing,
-      totalHired: hired,
-      avgTimeToHire: Math.round(avgTimeToHire),
-      recentActivity,
+      totalCandidates,
+      totalViews: shortlists,
+      hireRate,
     };
   }
 
