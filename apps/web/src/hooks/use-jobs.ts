@@ -10,6 +10,7 @@ interface JobFilters {
 
 interface JobSearchFilters {
   status?: string;
+  query?: string;
   search?: string;
   remotePolicy?: string;
   employmentType?: string;

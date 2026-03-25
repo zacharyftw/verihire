@@ -279,7 +279,7 @@ export class JobsService {
     ]);
 
     return {
-      data: jobs.map(job => this.formatJobListing(job)),
+      items: jobs.map(job => this.formatJobListing(job)),
       meta: {
         total,
         limit,

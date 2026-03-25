@@ -62,7 +62,7 @@ export default function JobsPage() {
 
   const { data, isLoading } = useJobSearch({
     status: 'ACTIVE',
-    search: debouncedSearch || undefined,
+    query: debouncedSearch || undefined,
     remotePolicy: remotePolicy && remotePolicy !== 'all' ? remotePolicy : undefined,
     employmentType: employmentType && employmentType !== 'all' ? employmentType : undefined,
     limit,
