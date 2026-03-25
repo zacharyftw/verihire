@@ -599,7 +599,7 @@ export class CandidatesService {
 
           if (existingForCandidate > 0) {
             const existingIds = existingChallenges.map(c => c.id);
-            const [completedCount, hasCertificate] = await Promise.all([
+            const [completedCount, activeCount, hasCertificate] = await Promise.all([
               prisma.submission.count({
                 where: {
                   candidateId,
@@ -607,12 +607,22 @@ export class CandidatesService {
                   challengeId: { in: existingIds },
                 },
               }),
+              prisma.submission.count({
+                where: {
+                  candidateId,
+                  status: { in: ['IN_PROGRESS', 'SUBMITTED', 'EVALUATING'] },
+                  challengeId: { in: existingIds },
+                },
+              }),
               prisma.certificate.count({ where: { candidateId } }),
             ]);
 
             const allCompleted = completedCount >= existingForCandidate;
+            // Also regenerate if generation was partial (< 4 challenges) and none started yet
+            const generationIncomplete =
+              existingForCandidate < 4 && completedCount === 0 && activeCount === 0;
 
-            if (allCompleted && hasCertificate === 0) {
+            if ((allCompleted && hasCertificate === 0) || generationIncomplete) {
               // All challenges done, no cert earned — candidate is retrying.
               // Delete old submissions (+ evaluations) then challenges, in the right order.
               await prisma.$transaction(async tx => {
