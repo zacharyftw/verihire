@@ -175,3 +175,19 @@ export class UpdateShortlistDto {
   @Max(5)
   rating?: number;
 }
+
+export class ApplyToJobDto {
+  @IsOptional()
+  @IsString()
+  coverLetter?: string;
+}
+
+export class UpdateApplicationDto {
+  @IsOptional()
+  @IsEnum(['REVIEWED', 'SHORTLISTED', 'REJECTED', 'HIRED'])
+  status?: 'REVIEWED' | 'SHORTLISTED' | 'REJECTED' | 'HIRED';
+
+  @IsOptional()
+  @IsString()
+  reviewerNotes?: string;
+}

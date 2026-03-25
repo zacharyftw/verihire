@@ -6,9 +6,10 @@ import { CertificateService } from './certificate.service';
 import { TestCaseGeneratorService } from './test-case-generator.service';
 import { PlagiarismService } from './plagiarism.service';
 import { CodeExecutionModule } from '../code-execution/code-execution.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [ConfigModule, CodeExecutionModule],
+  imports: [ConfigModule, CodeExecutionModule, NotificationsModule],
   controllers: [EvaluationsController],
   providers: [EvaluationsService, CertificateService, TestCaseGeneratorService, PlagiarismService],
   exports: [EvaluationsService, CertificateService, TestCaseGeneratorService, PlagiarismService],

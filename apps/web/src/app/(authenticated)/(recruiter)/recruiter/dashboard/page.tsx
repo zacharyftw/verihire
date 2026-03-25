@@ -1,81 +1,70 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import {
-  Briefcase,
-  Users,
-  Eye,
-  TrendingUp,
-  Search,
-  MapPin,
-  CheckCircle,
-  Award,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Briefcase, Users, UserCheck, TrendingUp, Plus, MapPin, Calendar } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
-import { useRecruiterDashboard } from '@/hooks/use-recruiter';
-import { useCandidateSearch } from '@/hooks/use-candidates-search';
-import { useDebounce } from '@/hooks/use-debounce';
-import { ROUTES } from '@/lib/constants';
+import { useRecruiterStats } from '@/hooks/use-recruiter';
+import { useMyJobs } from '@/hooks/use-jobs';
+import { ROUTES, JOB_STATUS_LABELS } from '@/lib/constants';
+import { formatDate } from '@/lib/utils';
 
-type CandidateRow = {
+const JOB_STATUS_COLORS: Record<string, string> = {
+  ACTIVE: 'bg-green-100 text-green-800',
+  DRAFT: 'bg-gray-100 text-gray-800',
+  PAUSED: 'bg-yellow-100 text-yellow-800',
+  CLOSED: 'bg-red-100 text-red-800',
+  FILLED: 'bg-purple-100 text-purple-800',
+};
+
+type JobRow = {
   id: string;
-  user?: { firstName: string; lastName: string };
-  headline?: string;
+  title: string;
+  status: string;
   locationCity?: string;
-  yearsExperience?: number;
-  remotePreference?: string;
-  candidateSkills?: Array<{ skillId: string; skill?: { name: string } }>;
-  _count?: { certificates: number };
+  remotePolicy?: string;
+  createdAt: string;
+  _count?: { applications: number };
+  company?: { name: string };
 };
 
 export default function RecruiterDashboardPage() {
-  const { data, isLoading } = useRecruiterDashboard();
+  const { data: statsData, isLoading: statsLoading } = useRecruiterStats();
+  const { data: jobsData, isLoading: jobsLoading } = useMyJobs();
+  const router = useRouter();
 
-  const [search, setSearch] = useState('');
-  const [remotePreference, setRemotePreference] = useState('');
-  const [minExperience, setMinExperience] = useState('');
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
-
-  const debouncedSearch = useDebounce(search, 300);
-
-  const { data: candidateData, isLoading: candidatesLoading } = useCandidateSearch({
-    locations: debouncedSearch ? [debouncedSearch] : undefined,
-    remotePreference: remotePreference && remotePreference !== 'all' ? remotePreference : undefined,
-    minExperience: minExperience && minExperience !== 'all' ? parseInt(minExperience) : undefined,
-    verifiedOnly: verifiedOnly || undefined,
-    limit: 20,
-  });
-
-  const candidates: CandidateRow[] = (candidateData?.items ?? []) as CandidateRow[];
+  const jobs: JobRow[] = (jobsData?.items ?? []) as unknown as JobRow[];
 
   const stats = [
-    { label: 'Active Jobs', value: data?.activeJobs ?? 0, icon: Briefcase },
-    { label: 'Total Candidates', value: data?.totalCandidates ?? 0, icon: Users },
-    { label: 'Total Views', value: data?.totalViews ?? 0, icon: Eye },
+    { label: 'Active Jobs', value: statsData?.activeJobs ?? 0, icon: Briefcase },
+    { label: 'Total Applicants', value: statsData?.totalApplicants ?? 0, icon: Users },
+    { label: 'Shortlisted', value: statsData?.shortlisted ?? 0, icon: UserCheck },
     {
       label: 'Hire Rate',
-      value: data?.hireRate ? `${Math.round(data.hireRate)}%` : '—',
+      value: statsData?.hireRate != null ? `${Math.round(statsData.hireRate)}%` : '\u2014',
       icon: TrendingUp,
     },
   ];
 
   return (
     <div>
-      <PageHeader title="Recruiter Dashboard" description="Overview of your hiring activity" />
+      <PageHeader
+        title="Recruiter Dashboard"
+        description="Overview of your hiring activity"
+        action={
+          <Button asChild>
+            <Link href={ROUTES.jobNew}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Job
+            </Link>
+          </Button>
+        }
+      />
 
       {/* Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -86,7 +75,7 @@ export default function RecruiterDashboardPage() {
                 <stat.icon className="h-5 w-5 text-primary" />
               </div>
               <div>
-                {isLoading ? (
+                {statsLoading ? (
                   <Skeleton className="h-7 w-16" />
                 ) : (
                   <p className="text-2xl font-bold">{stat.value}</p>
@@ -98,137 +87,101 @@ export default function RecruiterDashboardPage() {
         ))}
       </div>
 
-      {/* Candidate Table */}
+      {/* My Jobs Table */}
       <Card className="mt-8">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">All Candidates</CardTitle>
+          <CardTitle className="text-lg">My Jobs</CardTitle>
           <Button variant="ghost" size="sm" asChild>
-            <Link href={ROUTES.candidateSearch}>Advanced search</Link>
+            <Link href={ROUTES.jobs}>View all</Link>
           </Button>
         </CardHeader>
         <CardContent>
-          {/* Filters */}
-          <div className="mb-5 flex flex-wrap gap-3">
-            <div className="relative min-w-48 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Filter by location..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={remotePreference} onValueChange={setRemotePreference}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Remote" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any</SelectItem>
-                <SelectItem value="REMOTE">Remote</SelectItem>
-                <SelectItem value="HYBRID">Hybrid</SelectItem>
-                <SelectItem value="ONSITE">Onsite</SelectItem>
-                <SelectItem value="FLEXIBLE">Flexible</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={minExperience} onValueChange={setMinExperience}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Experience" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any</SelectItem>
-                <SelectItem value="1">1+ years</SelectItem>
-                <SelectItem value="3">3+ years</SelectItem>
-                <SelectItem value="5">5+ years</SelectItem>
-                <SelectItem value="10">10+ years</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant={verifiedOnly ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setVerifiedOnly(!verifiedOnly)}
-              className="h-10"
-            >
-              <CheckCircle className="mr-1 h-4 w-4" />
-              Verified only
-            </Button>
-          </div>
-
-          {/* Table */}
-          {candidatesLoading ? (
+          {jobsLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : !candidates.length ? (
+          ) : !jobs.length ? (
             <EmptyState
-              icon={Users}
-              title="No candidates found"
-              description="Try adjusting your filters"
+              icon={Briefcase}
+              title="No jobs yet"
+              description="Create your first job posting to start receiving applicants"
+              action={
+                <Button asChild>
+                  <Link href={ROUTES.jobNew}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Job
+                  </Link>
+                </Button>
+              }
             />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Candidate</th>
+                    <th className="pb-2 pr-4 font-medium">Job Title</th>
+                    <th className="pb-2 pr-4 font-medium">Status</th>
                     <th className="pb-2 pr-4 font-medium">Location</th>
-                    <th className="pb-2 pr-4 font-medium">Experience</th>
-                    <th className="pb-2 pr-4 font-medium">Skills</th>
-                    <th className="pb-2 font-medium">Certs</th>
+                    <th className="pb-2 pr-4 font-medium">Applicants</th>
+                    <th className="pb-2 pr-4 font-medium">Posted</th>
+                    <th className="pb-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {candidates.map(c => (
-                    <tr key={c.id} className="group transition-colors hover:bg-accent/50">
+                  {jobs.map(job => (
+                    <tr
+                      key={job.id}
+                      className="group cursor-pointer transition-colors hover:bg-accent/50"
+                      onClick={() => router.push(`/recruiter/jobs/${job.id}/applicants`)}
+                    >
                       <td className="py-3 pr-4">
-                        <Link href={ROUTES.candidateProfile(c.id)} className="block">
-                          <p className="font-medium group-hover:underline">
-                            {c.user ? `${c.user.firstName} ${c.user.lastName}` : 'Unknown'}
-                          </p>
-                          {c.headline && (
-                            <p className="max-w-48 truncate text-xs text-muted-foreground">
-                              {c.headline}
-                            </p>
-                          )}
-                        </Link>
+                        <p className="font-medium group-hover:underline">{job.title}</p>
+                        {job.company?.name && (
+                          <p className="text-xs text-muted-foreground">{job.company.name}</p>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge
+                          className={JOB_STATUS_COLORS[job.status] || 'bg-gray-100 text-gray-800'}
+                        >
+                          {JOB_STATUS_LABELS[job.status] || job.status}
+                        </Badge>
                       </td>
                       <td className="py-3 pr-4 text-muted-foreground">
-                        {c.locationCity ? (
+                        {job.locationCity ? (
                           <span className="flex items-center gap-1">
                             <MapPin className="h-3 w-3 shrink-0" />
-                            {c.locationCity}
+                            {job.locationCity}
                           </span>
+                        ) : job.remotePolicy ? (
+                          <span className="text-xs">{job.remotePolicy}</span>
                         ) : (
-                          '—'
+                          '\u2014'
                         )}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {c.yearsExperience != null ? `${c.yearsExperience}y` : '—'}
                       </td>
                       <td className="py-3 pr-4">
-                        <div className="flex flex-wrap gap-1">
-                          {c.candidateSkills?.slice(0, 3).map(s => (
-                            <Badge key={s.skillId} variant="secondary" className="text-xs">
-                              {s.skill?.name || s.skillId}
-                            </Badge>
-                          ))}
-                          {(c.candidateSkills?.length ?? 0) > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{c.candidateSkills!.length - 3}
-                            </Badge>
-                          )}
-                        </div>
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          {job._count?.applications ?? 0}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3 shrink-0" />
+                          {formatDate(job.createdAt)}
+                        </span>
                       </td>
                       <td className="py-3">
-                        {(c._count?.certificates ?? 0) > 0 ? (
-                          <span className="flex items-center gap-1 text-green-600">
-                            <Award className="h-3 w-3" />
-                            {c._count!.certificates}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                        <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={ROUTES.jobDetail(job.id)}>Details</Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link href={`/recruiter/jobs/${job.id}/applicants`}>Applicants</Link>
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

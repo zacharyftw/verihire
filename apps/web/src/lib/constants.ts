@@ -8,6 +8,8 @@ export const ROUTES = {
 
   // Candidate
   candidateDashboard: '/dashboard',
+  candidateJobs: '/jobs',
+  candidateJobDetail: (id: string) => `/jobs/${id}`,
   challenges: '/challenges',
   challengeDetail: (id: string) => `/challenges/${id}`,
   challengeSubmit: (id: string) => `/challenges/${id}/submit`,
@@ -86,4 +88,24 @@ export const SHORTLIST_STAGE_COLORS: Record<string, string> = {
   OFFER: 'bg-green-100 text-green-800',
   HIRED: 'bg-emerald-100 text-emerald-800',
   REJECTED: 'bg-red-100 text-red-800',
+};
+
+export const APPLICATION_STATUS_LABELS: Record<string, string> = {
+  APPLIED: 'Applied',
+  TESTING: 'Testing',
+  COMPLETED: 'Completed',
+  REVIEWED: 'Reviewed',
+  SHORTLISTED: 'Shortlisted',
+  REJECTED: 'Rejected',
+  HIRED: 'Hired',
+};
+
+export const APPLICATION_STATUS_COLORS: Record<string, string> = {
+  APPLIED: 'bg-blue-100 text-blue-800',
+  TESTING: 'bg-yellow-100 text-yellow-800',
+  COMPLETED: 'bg-green-100 text-green-800',
+  REVIEWED: 'bg-purple-100 text-purple-800',
+  SHORTLISTED: 'bg-emerald-100 text-emerald-800',
+  REJECTED: 'bg-red-100 text-red-800',
+  HIRED: 'bg-purple-100 text-purple-800',
 };

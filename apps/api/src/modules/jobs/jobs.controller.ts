@@ -23,6 +23,8 @@ import {
   AddJobSkillDto,
   ShortlistCandidateDto,
   UpdateShortlistDto,
+  ApplyToJobDto,
+  UpdateApplicationDto,
 } from './dto/job.dto';
 
 @Controller('jobs')
@@ -61,15 +63,6 @@ export class JobsController {
     });
   }
 
-  /**
-   * Get job by ID (public)
-   * GET /api/v1/jobs/:id
-   */
-  @Get(':id')
-  async getJob(@Param('id', ParseUUIDPipe) id: string) {
-    return this.jobsService.getJobById(id, true);
-  }
-
   // ===== Recruiter job management =====
 
   /**
@@ -104,6 +97,35 @@ export class JobsController {
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });
+  }
+
+  // ===== Candidate's job applications =====
+
+  /**
+   * Get my applications (candidate only)
+   * GET /api/v1/jobs/candidate/my-applications
+   */
+  @Get('candidate/my-applications')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('CANDIDATE')
+  async getMyApplications(
+    @Request() req: { user: { candidateProfileId: string } },
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    return this.jobsService.getCandidateApplications(req.user.candidateProfileId, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
+
+  /**
+   * Get job by ID (public)
+   * GET /api/v1/jobs/:id
+   */
+  @Get(':id')
+  async getJob(@Param('id', ParseUUIDPipe) id: string) {
+    return this.jobsService.getJobById(id, true);
   }
 
   /**
@@ -152,6 +174,21 @@ export class JobsController {
   }
 
   /**
+   * Apply to a job (candidate only)
+   * POST /api/v1/jobs/:id/apply
+   */
+  @Post(':id/apply')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('CANDIDATE')
+  async applyToJob(
+    @Request() req: { user: { candidateProfileId: string } },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ApplyToJobDto
+  ) {
+    return this.jobsService.applyToJob(id, req.user.candidateProfileId, body);
+  }
+
+  /**
    * Delete job (recruiter only)
    * DELETE /api/v1/jobs/:id
    */
@@ -197,7 +234,59 @@ export class JobsController {
     return this.jobsService.removeJobSkill(id, req.user.recruiterProfileId, skillId);
   }
 
-  // ===== Shortlist / Applications management =====
+  // ===== Job applications management (recruiter) =====
+
+  /**
+   * Get applications for a job (recruiter only)
+   * GET /api/v1/jobs/:id/applications
+   */
+  @Get(':id/applications')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('RECRUITER')
+  async getJobApplications(
+    @Request() req: { user: { recruiterProfileId: string } },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('status')
+    status?:
+      | 'APPLIED'
+      | 'TESTING'
+      | 'COMPLETED'
+      | 'REVIEWED'
+      | 'SHORTLISTED'
+      | 'REJECTED'
+      | 'HIRED',
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    return this.jobsService.getJobApplications(id, req.user.recruiterProfileId, {
+      status: status as any,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
+
+  /**
+   * Update application status (recruiter only)
+   * PATCH /api/v1/jobs/:id/applications/:applicationId
+   */
+  @Patch(':id/applications/:applicationId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('RECRUITER')
+  async updateApplication(
+    @Request() req: { user: { recruiterProfileId: string } },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('applicationId', ParseUUIDPipe) applicationId: string,
+    @Body() body: UpdateApplicationDto
+  ) {
+    return this.jobsService.updateJobApplication(
+      id,
+      applicationId,
+      req.user.recruiterProfileId,
+      body
+    );
+  }
+
+  // ===== Shortlist management =====
 
   /**
    * Add candidate to shortlist (recruiter only)
@@ -288,26 +377,6 @@ export class JobsController {
     @Query('offset') offset?: string
   ) {
     return this.jobsService.findMatchingCandidates(id, req.user.recruiterProfileId, {
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
-  }
-
-  // ===== Candidate's job applications =====
-
-  /**
-   * Get my shortlists/applications (candidate only)
-   * GET /api/v1/jobs/candidate/my-applications
-   */
-  @Get('candidate/my-applications')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('CANDIDATE')
-  async getMyApplications(
-    @Request() req: { user: { candidateProfileId: string } },
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string
-  ) {
-    return this.jobsService.getCandidateShortlists(req.user.candidateProfileId, {
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });

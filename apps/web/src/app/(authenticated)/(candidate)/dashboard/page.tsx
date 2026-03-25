@@ -1,7 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Award, Code2, FileText, TrendingUp, CheckCircle2, ExternalLink } from 'lucide-react';
+import {
+  Award,
+  Briefcase,
+  Code2,
+  FileText,
+  TrendingUp,
+  CheckCircle2,
+  ExternalLink,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +21,14 @@ import { useCandidateStats, useDomainScores, useCandidateProfile } from '@/hooks
 import { useRecommendedChallenges } from '@/hooks/use-challenges';
 import { useMySubmissions } from '@/hooks/use-submissions';
 import { useMyCertificates } from '@/hooks/use-certificates';
+import { useMyApplications } from '@/hooks/use-applications';
 import {
   ROUTES,
   DIFFICULTY_COLORS,
   SUBMISSION_STATUS_LABELS,
   SUBMISSION_STATUS_COLORS,
+  APPLICATION_STATUS_LABELS,
+  APPLICATION_STATUS_COLORS,
 } from '@/lib/constants';
 import { StatusBadge } from '@/components/status-badge';
 
@@ -29,6 +40,7 @@ export default function CandidateDashboardPage() {
   const { data: challenges } = useRecommendedChallenges();
   const { data: submissions, isLoading: submissionsLoading } = useMySubmissions({ limit: 10 });
   const { data: certificatesData, isLoading: certsLoading } = useMyCertificates();
+  const { data: applications, isLoading: applicationsLoading } = useMyApplications();
 
   const statCards = [
     { label: 'Challenges Completed', value: stats?.challengesCompleted ?? 0, icon: Code2 },
@@ -51,6 +63,14 @@ export default function CandidateDashboardPage() {
       <PageHeader
         title={`Welcome back, ${user?.firstName || 'there'}!`}
         description="Here's an overview of your progress"
+        action={
+          <Button asChild>
+            <Link href={ROUTES.candidateJobs}>
+              <Briefcase className="mr-2 h-4 w-4" />
+              Browse Jobs
+            </Link>
+          </Button>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -72,6 +92,83 @@ export default function CandidateDashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* My Applications */}
+      <Card className="mt-8">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">My Applications</CardTitle>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={ROUTES.candidateJobs}>Browse Jobs</Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {applicationsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : !applications?.length ? (
+            <EmptyState
+              icon={Briefcase}
+              title="No applications yet"
+              description="Browse jobs and apply to get started"
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={ROUTES.candidateJobs}>Browse Jobs</Link>
+                </Button>
+              }
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="pb-2 pr-4 font-medium">Job</th>
+                    <th className="pb-2 pr-4 font-medium">Company</th>
+                    <th className="pb-2 pr-4 font-medium">Status</th>
+                    <th className="pb-2 pr-4 font-medium">Applied</th>
+                    <th className="pb-2 pr-4 font-medium">Score</th>
+                    <th className="pb-2 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {applications.map(app => (
+                    <tr key={app.id}>
+                      <td className="py-3 pr-4 font-medium">{app.job.title}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">{app.job.company.name}</td>
+                      <td className="py-3 pr-4">
+                        <StatusBadge
+                          status={app.status}
+                          labels={APPLICATION_STATUS_LABELS}
+                          colors={APPLICATION_STATUS_COLORS}
+                        />
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        {new Date(app.appliedAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-3 pr-4 font-medium">
+                        {app.averageScore != null ? `${Math.round(app.averageScore)}%` : '—'}
+                      </td>
+                      <td className="py-3">
+                        {app.status === 'TESTING' ? (
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link href={ROUTES.challenges}>Challenges</Link>
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link href={ROUTES.candidateJobDetail(app.jobId)}>View</Link>
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Certificates */}
       <Card className="mt-8">

@@ -10,6 +10,7 @@ import {
   Award,
   User,
   MessageSquare,
+  Mail,
   Briefcase,
   Building2,
   Search,
@@ -19,13 +20,17 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { ROUTES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useUnreadMessages } from '@/hooks/use-messages';
 
 const candidateNav = [
   { label: 'Dashboard', href: ROUTES.candidateDashboard, icon: LayoutDashboard },
+  { label: 'Jobs', href: ROUTES.candidateJobs, icon: Briefcase },
   { label: 'Challenges', href: ROUTES.challenges, icon: Code2 },
   { label: 'Submissions', href: ROUTES.submissions, icon: FileText },
   { label: 'Certificates', href: ROUTES.certificates, icon: Award },
   { label: 'Reviews', href: ROUTES.reviews, icon: MessageSquare },
+  { label: 'Messages', href: '/messages', icon: Mail },
   { label: 'Profile', href: ROUTES.profile, icon: User },
 ];
 
@@ -34,6 +39,7 @@ const recruiterNav = [
   { label: 'Company', href: ROUTES.company, icon: Building2 },
   { label: 'Jobs', href: ROUTES.jobs, icon: Briefcase },
   { label: 'Candidates', href: ROUTES.candidateSearch, icon: Search },
+  { label: 'Messages', href: '/messages', icon: Mail },
 ];
 
 interface MobileNavProps {
@@ -44,6 +50,8 @@ interface MobileNavProps {
 export function MobileNav({ open, onClose }: MobileNavProps) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { data: unreadData } = useUnreadMessages();
+  const unreadCount = unreadData?.unreadCount ?? 0;
 
   if (!open) return null;
 
@@ -81,6 +89,11 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {item.label === 'Messages' && unreadCount > 0 && (
+                  <Badge className="ml-auto bg-primary px-1.5 py-0 text-xs text-primary-foreground">
+                    {unreadCount}
+                  </Badge>
+                )}
               </Link>
             );
           })}

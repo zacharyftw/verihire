@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -13,6 +14,7 @@ import {
   EmploymentType,
   SkillLevel,
   ShortlistStage,
+  ApplicationStatus,
 } from '@verihire/database';
 import {
   CreateJobDto,
@@ -21,10 +23,20 @@ import {
   SearchJobsDto,
   ShortlistCandidateDto,
   UpdateShortlistDto,
+  ApplyToJobDto,
+  UpdateApplicationDto,
 } from './dto/job.dto';
+import { ResumeAnalysisService } from '../resume-analysis/resume-analysis.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
+
+  constructor(
+    private readonly resumeAnalysisService: ResumeAnalysisService,
+    private readonly notificationsService: NotificationsService
+  ) {}
   // ===== Job CRUD =====
 
   async createJob(recruiterId: string, data: CreateJobDto) {
@@ -836,6 +848,443 @@ export class JobsService {
       default:
         return 2; // Default to intermediate
     }
+  }
+
+  // ===== Job Applications =====
+
+  async applyToJob(jobId: string, candidateId: string, data: ApplyToJobDto) {
+    // Validate job exists and is ACTIVE
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        jobSkills: {
+          include: {
+            skill: true,
+          },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.status !== 'ACTIVE') {
+      throw new BadRequestException('This job is not currently accepting applications');
+    }
+
+    // Check candidate hasn't already applied
+    const existing = await prisma.jobApplication.findUnique({
+      where: {
+        jobId_candidateId: { jobId, candidateId },
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('You have already applied to this job');
+    }
+
+    // Create application
+    const application = await prisma.jobApplication.create({
+      data: {
+        jobId,
+        candidateId,
+        status: 'APPLIED',
+        coverLetter: data.coverLetter,
+      },
+    });
+
+    // Increment application count on job
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { applicationsCount: { increment: 1 } },
+    });
+
+    // Generate challenges based on job's required skills
+    const challengeIds: string[] = [];
+
+    try {
+      const jobSkills = job.jobSkills;
+
+      if (jobSkills.length > 0) {
+        // Get candidate profile for seniority info
+        const candidate = await prisma.candidateProfile.findUnique({
+          where: { id: candidateId },
+          select: {
+            resumeSeniorityLevel: true,
+            resumeDomains: true,
+            resumeYearsExp: true,
+            yearsExperience: true,
+          },
+        });
+
+        const seniorityLevel = candidate?.resumeSeniorityLevel || 'mid';
+        const yearsExp = candidate?.resumeYearsExp || candidate?.yearsExperience || 0;
+
+        // Use skill names as domains for challenge generation
+        const skillNames = jobSkills.map(js => js.skill.name);
+
+        // Generate challenges from the job's required skills (up to 4 total)
+        const challenges = await this.resumeAnalysisService.generateChallengesFromResume({
+          seniorityLevel,
+          domains: skillNames,
+          totalYearsExp: yearsExp,
+        });
+
+        const timeLimitMap: Record<string, number> = {
+          BEGINNER: 25,
+          INTERMEDIATE: 35,
+          ADVANCED: 45,
+          EXPERT: 60,
+        };
+
+        // Limit to 4 challenges max
+        const limitedChallenges = challenges.slice(0, 4);
+
+        for (const c of limitedChallenges) {
+          const challenge = await prisma.challenge.create({
+            data: {
+              title: c.title,
+              description: c.description,
+              difficulty: c.difficulty as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT',
+              type: c.type as 'CODING' | 'DESIGN' | 'WRITTEN' | 'MIXED',
+              category: c.category as 'GENERAL_SWE' | 'DOMAIN_SPECIFIC',
+              referenceSolution: c.referenceSolution,
+              solutionLanguage: c.solutionLanguage,
+              supportedLanguages: [
+                ...new Set(
+                  [
+                    c.solutionLanguage,
+                    'python',
+                    'javascript',
+                    'typescript',
+                    'java',
+                    'cpp',
+                    'csharp',
+                    'go',
+                    'rust',
+                    'ruby',
+                    'php',
+                    'kotlin',
+                    'swift',
+                    'scala',
+                    'bash',
+                  ].filter(Boolean)
+                ),
+              ],
+              timeLimitMinutes: timeLimitMap[c.difficulty] || 30,
+              generatedForCandidateId: candidateId,
+              jobApplicationId: application.id,
+              domainTag: c.domainTag,
+            },
+          });
+          challengeIds.push(challenge.id);
+        }
+
+        this.logger.log(
+          `Generated ${challengeIds.length} challenges for application ${application.id} (job ${jobId})`
+        );
+      }
+
+      // Update application status to TESTING
+      await prisma.jobApplication.update({
+        where: { id: application.id },
+        data: { status: 'TESTING' },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to generate challenges for application ${application.id}: ${error}`
+      );
+      // Application is still created even if challenge generation fails
+    }
+
+    // Notify the recruiter about the new application
+    try {
+      if (job.recruiterId) {
+        const recruiterProfile = await prisma.recruiterProfile.findUnique({
+          where: { id: job.recruiterId },
+          select: { userId: true },
+        });
+        if (recruiterProfile) {
+          await this.notificationsService.create(recruiterProfile.userId, {
+            type: 'APPLICATION_RECEIVED',
+            title: `New application for ${job.title}`,
+            message: 'A candidate has applied to your job posting.',
+            link: `/recruiter/jobs/${jobId}`,
+            metadata: { jobId, applicationId: application.id },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to send APPLICATION_RECEIVED notification: ${err}`);
+    }
+
+    // Return the application with challenge IDs
+    const updatedApplication = await prisma.jobApplication.findUnique({
+      where: { id: application.id },
+      include: {
+        job: {
+          select: {
+            id: true,
+            title: true,
+            company: { select: { id: true, name: true, logoUrl: true } },
+          },
+        },
+        challenges: {
+          select: {
+            id: true,
+            title: true,
+            difficulty: true,
+            type: true,
+            domainTag: true,
+          },
+        },
+      },
+    });
+
+    return updatedApplication;
+  }
+
+  async getJobApplications(
+    jobId: string,
+    recruiterId: string,
+    options?: {
+      status?: ApplicationStatus;
+      limit?: number;
+      offset?: number;
+    }
+  ) {
+    await this.getJobForRecruiter(jobId, recruiterId);
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+
+    const where: Record<string, unknown> = { jobId };
+    if (options?.status) {
+      where.status = options.status;
+    }
+
+    const [applications, total] = await Promise.all([
+      prisma.jobApplication.findMany({
+        where,
+        include: {
+          candidate: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  avatarUrl: true,
+                },
+              },
+              candidateSkills: {
+                include: {
+                  skill: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
+              },
+            },
+          },
+          challenges: {
+            select: {
+              id: true,
+              title: true,
+              difficulty: true,
+              type: true,
+              domainTag: true,
+              submissions: {
+                select: {
+                  id: true,
+                  status: true,
+                  finalScore: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+        orderBy: { appliedAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.jobApplication.count({ where }),
+    ]);
+
+    return {
+      data: applications,
+      meta: { total, limit, offset, hasMore: offset + applications.length < total },
+    };
+  }
+
+  async updateJobApplication(
+    jobId: string,
+    applicationId: string,
+    recruiterId: string,
+    data: UpdateApplicationDto
+  ) {
+    await this.getJobForRecruiter(jobId, recruiterId);
+
+    const application = await prisma.jobApplication.findUnique({
+      where: { id: applicationId },
+    });
+
+    if (!application) {
+      throw new NotFoundException('Application not found');
+    }
+
+    if (application.jobId !== jobId) {
+      throw new BadRequestException('Application does not belong to this job');
+    }
+
+    const updateData: Record<string, unknown> = {};
+
+    if (data.reviewerNotes !== undefined) {
+      updateData.reviewerNotes = data.reviewerNotes;
+    }
+
+    if (data.status) {
+      updateData.status = data.status as ApplicationStatus;
+
+      // Set reviewedAt when transitioning to review-related statuses
+      if (['REVIEWED', 'SHORTLISTED', 'REJECTED', 'HIRED'].includes(data.status)) {
+        updateData.reviewedAt = new Date();
+      }
+    }
+
+    const updated = await prisma.jobApplication.update({
+      where: { id: applicationId },
+      data: updateData,
+      include: {
+        candidate: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+        job: {
+          select: { title: true },
+        },
+        challenges: {
+          select: {
+            id: true,
+            title: true,
+            difficulty: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    // Notify candidate on status changes
+    if (data.status) {
+      try {
+        const candidateUserId = updated.candidate.user.id;
+        const jobTitle = updated.job.title;
+        const notificationMap: Record<
+          string,
+          { type: 'SHORTLISTED' | 'REJECTED' | 'HIRED'; title: string; message: string }
+        > = {
+          SHORTLISTED: {
+            type: 'SHORTLISTED',
+            title: `You've been shortlisted for ${jobTitle}`,
+            message: 'Congratulations! The recruiter has shortlisted your application.',
+          },
+          REJECTED: {
+            type: 'REJECTED',
+            title: `Application update for ${jobTitle}`,
+            message: 'Unfortunately, your application was not selected to move forward.',
+          },
+          HIRED: {
+            type: 'HIRED',
+            title: `Congratulations! You've been hired for ${jobTitle}`,
+            message: 'Great news! The recruiter has marked you as hired.',
+          },
+        };
+
+        const notif = notificationMap[data.status];
+        if (notif) {
+          await this.notificationsService.create(candidateUserId, {
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            link: `/jobs`,
+            metadata: { jobId, applicationId },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to send application status notification: ${err}`);
+      }
+    }
+
+    return updated;
+  }
+
+  async getCandidateApplications(
+    candidateId: string,
+    options?: { limit?: number; offset?: number }
+  ) {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    const [applications, total] = await Promise.all([
+      prisma.jobApplication.findMany({
+        where: { candidateId },
+        include: {
+          job: {
+            include: {
+              company: {
+                select: { id: true, name: true, logoUrl: true },
+              },
+              jobSkills: {
+                include: {
+                  skill: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
+              },
+            },
+          },
+          challenges: {
+            select: {
+              id: true,
+              title: true,
+              difficulty: true,
+              type: true,
+              domainTag: true,
+              submissions: {
+                where: { candidateId },
+                select: {
+                  id: true,
+                  status: true,
+                  finalScore: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+        orderBy: { appliedAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.jobApplication.count({ where: { candidateId } }),
+    ]);
+
+    return {
+      data: applications,
+      meta: { total, limit, offset, hasMore: offset + applications.length < total },
+    };
   }
 
   // ===== Helper methods =====

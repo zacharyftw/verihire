@@ -4,6 +4,7 @@ import { CertificateService, GeneratedCertificate } from './certificate.service'
 import { TestCaseGeneratorService, GeneratedTestCase } from './test-case-generator.service';
 import { CodeExecutionService, TestCaseResults } from '../code-execution/code-execution.service';
 import { PlagiarismService } from './plagiarism.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface EvaluationWithCertificate {
   evaluation: {
@@ -27,7 +28,8 @@ export class EvaluationsService {
     private certificateService: CertificateService,
     private testCaseGenerator: TestCaseGeneratorService,
     private codeExecutionService: CodeExecutionService,
-    private plagiarismService: PlagiarismService
+    private plagiarismService: PlagiarismService,
+    private notificationsService: NotificationsService
   ) {}
 
   /**
@@ -179,6 +181,9 @@ export class EvaluationsService {
 
         // 13. Recalculate domain scores for this candidate
         const domainScores = await this.recalculateDomainScores(submission.candidateId);
+
+        // 13b. Check if this challenge belongs to a job application
+        await this.checkJobApplicationCompletion(submission.challenge);
 
         // 14. Check if ALL generated challenges are completed — if so, issue certificate
         const candidateId = submission.candidateId;
@@ -873,6 +878,130 @@ export class EvaluationsService {
     } catch (error) {
       this.logger.error(`Failed to recalculate domain scores: ${error}`);
       return {};
+    }
+  }
+
+  /**
+   * Check if all challenges for a job application are completed.
+   * If so, calculate average score and update the application status to COMPLETED.
+   */
+  private async checkJobApplicationCompletion(challenge: {
+    id: string;
+    jobApplicationId?: string | null;
+  }) {
+    if (!challenge.jobApplicationId) return;
+
+    try {
+      const applicationId = challenge.jobApplicationId;
+
+      // Get all challenges for this application
+      const applicationChallenges = await prisma.challenge.findMany({
+        where: { jobApplicationId: applicationId },
+        select: { id: true },
+      });
+
+      if (applicationChallenges.length === 0) return;
+
+      const challengeIds = applicationChallenges.map(c => c.id);
+
+      // Count how many have been evaluated
+      const evaluatedSubmissions = await prisma.submission.findMany({
+        where: {
+          challengeId: { in: challengeIds },
+          status: 'EVALUATED',
+          aiScore: { not: null },
+        },
+        select: {
+          challengeId: true,
+          finalScore: true,
+        },
+      });
+
+      // Deduplicate by challengeId (take the latest/any evaluated submission per challenge)
+      const evaluatedChallengeIds = new Set(evaluatedSubmissions.map(s => s.challengeId));
+
+      if (evaluatedChallengeIds.size < applicationChallenges.length) {
+        // Not all challenges are completed yet
+        return;
+      }
+
+      // All challenges completed — calculate average score
+      // Use the best score per challenge
+      const scoreByChallenge = new Map<string, number>();
+      for (const sub of evaluatedSubmissions) {
+        const score = Number(sub.finalScore ?? 0);
+        const current = scoreByChallenge.get(sub.challengeId) ?? 0;
+        if (score > current) {
+          scoreByChallenge.set(sub.challengeId, score);
+        }
+      }
+
+      const scores = Array.from(scoreByChallenge.values());
+      const averageScore =
+        scores.length > 0
+          ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+          : 0;
+
+      // Update application status to COMPLETED
+      await prisma.jobApplication.update({
+        where: { id: applicationId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          averageScore,
+        },
+      });
+
+      this.logger.log(
+        `Job application ${applicationId} completed: average score ${averageScore}% across ${scores.length} challenges`
+      );
+
+      // Notify the recruiter that the candidate completed all tests
+      try {
+        const application = await prisma.jobApplication.findUnique({
+          where: { id: applicationId },
+          include: {
+            job: {
+              select: { title: true, recruiterId: true },
+            },
+            candidate: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        });
+
+        if (application?.job?.recruiterId) {
+          const recruiterProfile = await prisma.recruiterProfile.findUnique({
+            where: { id: application.job.recruiterId },
+            select: { userId: true },
+          });
+
+          if (recruiterProfile) {
+            const candidateName =
+              [application.candidate.user.firstName, application.candidate.user.lastName]
+                .filter(Boolean)
+                .join(' ') || 'A candidate';
+
+            await this.notificationsService.create(recruiterProfile.userId, {
+              type: 'APPLICATION_COMPLETED',
+              title: `${candidateName} completed tests for ${application.job.title}`,
+              message: `Average score: ${averageScore}% across ${scores.length} challenges.`,
+              link: `/recruiter/jobs/${application.jobId}`,
+              metadata: {
+                jobId: application.jobId,
+                applicationId,
+                averageScore,
+              },
+            });
+          }
+        }
+      } catch (notifError) {
+        this.logger.warn(`Failed to send APPLICATION_COMPLETED notification: ${notifError}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to check job application completion: ${error}`);
     }
   }
 

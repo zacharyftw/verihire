@@ -9,6 +9,7 @@ import {
   Award,
   User,
   MessageSquare,
+  Mail,
   Briefcase,
   Building2,
   Search,
@@ -17,6 +18,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { ROUTES } from '@/lib/constants';
+import { useUnreadMessages } from '@/hooks/use-messages';
+import { Badge } from '@/components/ui/badge';
 
 interface NavItem {
   label: string;
@@ -26,10 +29,12 @@ interface NavItem {
 
 const candidateNav: NavItem[] = [
   { label: 'Dashboard', href: ROUTES.candidateDashboard, icon: LayoutDashboard },
+  { label: 'Jobs', href: ROUTES.candidateJobs, icon: Briefcase },
   { label: 'Challenges', href: ROUTES.challenges, icon: Code2 },
   { label: 'Submissions', href: ROUTES.submissions, icon: FileText },
   { label: 'Certificates', href: ROUTES.certificates, icon: Award },
   { label: 'Reviews', href: ROUTES.reviews, icon: MessageSquare },
+  { label: 'Messages', href: '/messages', icon: Mail },
   { label: 'Profile', href: ROUTES.profile, icon: User },
 ];
 
@@ -38,11 +43,14 @@ const recruiterNav: NavItem[] = [
   { label: 'Company', href: ROUTES.company, icon: Building2 },
   { label: 'Jobs', href: ROUTES.jobs, icon: Briefcase },
   { label: 'Candidates', href: ROUTES.candidateSearch, icon: Search },
+  { label: 'Messages', href: '/messages', icon: Mail },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { data: unreadData } = useUnreadMessages();
+  const unreadCount = unreadData?.unreadCount ?? 0;
 
   const navItems = user?.userType === 'RECRUITER' ? recruiterNav : candidateNav;
 
@@ -70,6 +78,11 @@ export function Sidebar() {
             >
               <item.icon className="h-4 w-4" />
               {item.label}
+              {item.label === 'Messages' && unreadCount > 0 && (
+                <Badge className="ml-auto bg-primary px-1.5 py-0 text-xs text-primary-foreground">
+                  {unreadCount}
+                </Badge>
+              )}
             </Link>
           );
         })}

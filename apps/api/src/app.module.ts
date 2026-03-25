@@ -19,6 +19,8 @@ import { RecruitersModule } from './modules/recruiters/recruiters.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ResumeAnalysisModule } from './modules/resume-analysis/resume-analysis.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { MessagesModule } from './modules/messages/messages.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -71,6 +73,8 @@ import configuration from './config/configuration';
     CompaniesModule,
     AnalyticsModule,
     ResumeAnalysisModule,
+    NotificationsModule,
+    MessagesModule,
   ],
 })
 export class AppModule {}

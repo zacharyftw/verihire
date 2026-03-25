@@ -63,6 +63,9 @@ model User {
   recruiterProfile  RecruiterProfile?
   challengeTemplatesCreated ChallengeTemplate[]
   grantedRoles      UserRole[]  @relation("GrantedBy")
+  notifications     Notification[]
+  conversations     ConversationParticipant[]
+  messages          Message[]
 
   @@index([email])
   @@index([status])
@@ -179,6 +182,7 @@ model CandidateProfile {
   reviewsGiven        Review[]
   shortlists          Shortlist[]
   generatedChallenges Challenge[] @relation("GeneratedChallenges")
+  applications        JobApplication[]
 
   @@index([userId])
   @@index([jobSearchStatus])
@@ -374,6 +378,7 @@ model Challenge {
 
   // Personalization — tracks which candidate triggered generation and what domain it assesses
   generatedForCandidateId String? @map("generated_for_candidate_id") @db.Uuid
+  jobApplicationId        String? @map("job_application_id") @db.Uuid
   domainTag               String? @map("domain_tag") @db.VarChar(100)
 
   // Metadata
@@ -393,6 +398,7 @@ model Challenge {
   template       ChallengeTemplate? @relation(fields: [templateId], references: [id])
   skill          Skill?             @relation(fields: [skillId], references: [id])
   generatedFor   CandidateProfile?  @relation("GeneratedChallenges", fields: [generatedForCandidateId], references: [id])
+  jobApplication JobApplication?    @relation(fields: [jobApplicationId], references: [id])
   submissions    Submission[]
   certificates   Certificate[]
 
@@ -400,6 +406,7 @@ model Challenge {
   @@index([difficulty])
   @@index([type])
   @@index([generatedForCandidateId])
+  @@index([jobApplicationId])
   @@index([domainTag])
   @@map("challenges")
 }
@@ -710,6 +717,41 @@ model RecruiterProfile {
 }
 
 // =============================================================================
+// JOB APPLICATIONS
+// =============================================================================
+
+enum ApplicationStatus {
+  APPLIED
+  TESTING
+  COMPLETED
+  REVIEWED
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+model JobApplication {
+  id              String            @id @default(uuid()) @db.Uuid
+  jobId           String            @map("job_id") @db.Uuid
+  candidateId     String            @map("candidate_id") @db.Uuid
+  status          ApplicationStatus @default(APPLIED)
+  coverLetter     String?           @map("cover_letter")
+  appliedAt       DateTime          @default(now()) @map("applied_at")
+  completedAt     DateTime?         @map("completed_at")
+  reviewedAt      DateTime?         @map("reviewed_at")
+  reviewerNotes   String?           @map("reviewer_notes")
+  averageScore    Float?            @map("average_score")
+
+  job             Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate       CandidateProfile  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  challenges      Challenge[]
+  conversation    Conversation?
+
+  @@unique([jobId, candidateId])
+  @@map("job_applications")
+}
+
+// =============================================================================
 // JOBS & HIRING
 // =============================================================================
 
@@ -775,10 +817,11 @@ model Job {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  company    Company?          @relation(fields: [companyId], references: [id])
-  recruiter  RecruiterProfile? @relation(fields: [recruiterId], references: [id])
-  jobSkills  JobSkill[]
-  shortlists Shortlist[]
+  company      Company?          @relation(fields: [companyId], references: [id])
+  recruiter    RecruiterProfile? @relation(fields: [recruiterId], references: [id])
+  jobSkills    JobSkill[]
+  shortlists   Shortlist[]
+  applications JobApplication[]
 
   @@index([companyId])
   @@index([recruiterId])
@@ -852,6 +895,39 @@ model Shortlist {
 }
 
 // =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+enum NotificationType {
+  APPLICATION_RECEIVED
+  APPLICATION_STATUS
+  APPLICATION_COMPLETED
+  CHALLENGE_GENERATED
+  SHORTLISTED
+  REJECTED
+  HIRED
+  GENERAL
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  type        NotificationType
+  title       String
+  message     String
+  read        Boolean          @default(false)
+  link        String?
+  metadata    Json?
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// =============================================================================
 // AUDIT & ANALYTICS
 // =============================================================================
 
@@ -922,4 +998,50 @@ model AnalyticsEvent {
   @@index([userId])
   @@index([createdAt])
   @@map("analytics_events")
+}
+
+// =============================================================================
+// MESSAGING
+// =============================================================================
+
+model Conversation {
+  id               String           @id @default(uuid()) @db.Uuid
+  jobApplicationId String?          @unique @map("job_application_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  jobApplication   JobApplication?  @relation(fields: [jobApplicationId], references: [id], onDelete: SetNull)
+  participants     ConversationParticipant[]
+  messages         Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  lastReadAt     DateTime?    @map("last_read_at")
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  senderId       String       @map("sender_id") @db.Uuid
+  content        String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  editedAt       DateTime?    @map("edited_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }
