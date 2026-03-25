@@ -259,44 +259,32 @@ export class CandidatesService {
 
   // Stats and achievements
   async getStats(candidateId: string) {
-    const [submissions, certificates, verifiedSkills] = await Promise.all([
-      prisma.submission.groupBy({
-        by: ['status'],
-        where: { candidateId },
-        _count: true,
-      }),
-      prisma.certificate.count({
-        where: { candidateId, revokedAt: null },
-      }),
-      prisma.candidateSkill.count({
-        where: { candidateId, verified: true },
-      }),
-    ]);
-
-    const submissionStats = submissions.reduce(
-      (acc, s) => {
-        acc[s.status] = s._count;
-        acc.total += s._count;
-        return acc;
-      },
-      { total: 0 } as Record<string, number>
-    );
-
-    // Get average score across all evaluated submissions
-    const avgScore = await prisma.submission.aggregate({
-      where: {
-        candidateId,
-        status: 'EVALUATED',
-        aiScore: { not: null },
-      },
-      _avg: { aiScore: true },
-    });
+    const [challengesCompleted, submissionsCount, certificatesCount, verifiedSkills, avgScore] =
+      await Promise.all([
+        prisma.submission.count({
+          where: { candidateId, status: 'EVALUATED' },
+        }),
+        prisma.submission.count({
+          where: { candidateId },
+        }),
+        prisma.certificate.count({
+          where: { candidateId, revokedAt: null },
+        }),
+        prisma.candidateSkill.count({
+          where: { candidateId, verified: true },
+        }),
+        prisma.submission.aggregate({
+          where: { candidateId, status: 'EVALUATED', aiScore: { not: null } },
+          _avg: { aiScore: true },
+        }),
+      ]);
 
     return {
-      submissions: submissionStats,
-      certificates,
+      challengesCompleted,
+      submissionsCount,
+      certificatesCount,
       verifiedSkills,
-      averageScore: avgScore._avg.aiScore,
+      averageScore: avgScore._avg.aiScore ? Number(avgScore._avg.aiScore) : null,
     };
   }
 
