@@ -586,15 +586,68 @@ export class CandidatesService {
             );
           }
 
-          // Skip challenge generation if this candidate already has generated challenges
-          const existingForCandidate = await prisma.challenge.count({
+          // Determine whether to generate new challenges.
+          // Re-generate if the candidate has completed all previous challenges but
+          // hasn't earned a certificate yet (i.e. they failed and are retrying).
+          const existingChallenges = await prisma.challenge.findMany({
             where: { generatedForCandidateId: candidateId },
+            select: { id: true },
           });
+          const existingForCandidate = existingChallenges.length;
+
+          let shouldGenerate = existingForCandidate === 0;
+
           if (existingForCandidate > 0) {
-            this.logger.log(
-              `Candidate ${candidateId} already has ${existingForCandidate} generated challenges, skipping generation`
-            );
-          } else {
+            const existingIds = existingChallenges.map(c => c.id);
+            const [completedCount, hasCertificate] = await Promise.all([
+              prisma.submission.count({
+                where: {
+                  candidateId,
+                  status: 'EVALUATED',
+                  challengeId: { in: existingIds },
+                },
+              }),
+              prisma.certificate.count({ where: { candidateId } }),
+            ]);
+
+            const allCompleted = completedCount >= existingForCandidate;
+
+            if (allCompleted && hasCertificate === 0) {
+              // All challenges done, no cert earned — candidate is retrying.
+              // Delete old submissions (+ evaluations) then challenges, in the right order.
+              await prisma.$transaction(async tx => {
+                const submissionIds = (
+                  await tx.submission.findMany({
+                    where: { challengeId: { in: existingIds } },
+                    select: { id: true },
+                  })
+                ).map(s => s.id);
+
+                if (submissionIds.length > 0) {
+                  await tx.evaluation.deleteMany({
+                    where: { submissionId: { in: submissionIds } },
+                  });
+                  await tx.submission.deleteMany({
+                    where: { id: { in: submissionIds } },
+                  });
+                }
+
+                await tx.challenge.deleteMany({
+                  where: { generatedForCandidateId: candidateId },
+                });
+              });
+              this.logger.log(
+                `Deleted ${existingForCandidate} old challenges for retrying candidate ${candidateId}`
+              );
+              shouldGenerate = true;
+            } else {
+              this.logger.log(
+                `Candidate ${candidateId} already has ${existingForCandidate} generated challenges (${completedCount} completed, hasCert=${hasCertificate > 0}), skipping generation`
+              );
+            }
+          }
+
+          if (shouldGenerate) {
             // Generate personalized challenges from resume
             const challenges = await this.resumeAnalysisService.generateChallengesFromResume({
               seniorityLevel: analysis.seniorityLevel,

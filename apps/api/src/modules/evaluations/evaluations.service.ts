@@ -185,7 +185,12 @@ export class EvaluationsService {
         const [totalChallenges, completedSubmissions] = await Promise.all([
           prisma.challenge.count({ where: { generatedForCandidateId: candidateId } }),
           prisma.submission.count({
-            where: { candidateId, status: 'EVALUATED', aiScore: { not: null } },
+            where: {
+              candidateId,
+              status: 'EVALUATED',
+              aiScore: { not: null },
+              challenge: { generatedForCandidateId: candidateId },
+            },
           }),
         ]);
 
