@@ -11,7 +11,6 @@ interface JobFilters {
 interface JobSearchFilters {
   status?: string;
   query?: string;
-  search?: string;
   remotePolicy?: string;
   employmentType?: string;
   locationCity?: string;
@@ -93,7 +92,7 @@ export function useJobShortlist(jobId: string | undefined, stage?: string) {
 }
 
 export function addToShortlist(jobId: string, candidateId: string, notes?: string) {
-  return api.post(`/jobs/${jobId}/shortlist`, { jobId, candidateId, notes });
+  return api.post(`/jobs/${jobId}/shortlist`, { candidateId, notes });
 }
 
 export function updateShortlistEntry(
