@@ -125,12 +125,13 @@ export class AuthController {
   private async handleOAuthCallback(req: any, res: Response) {
     try {
       const result = await this.authService.validateOrCreateOAuthUser(req.user);
-      // Redirect to frontend with tokens as query params
+      // Redirect to frontend with tokens in URL fragment (not query params)
+      // Fragments are NOT sent to servers and NOT logged in access logs
       const params = new URLSearchParams({
         accessToken: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken,
       });
-      return res.redirect(`${this.frontendUrl}/auth/callback?${params.toString()}`);
+      return res.redirect(`${this.frontendUrl}/auth/callback#${params.toString()}`);
     } catch {
       return res.redirect(`${this.frontendUrl}/login?error=oauth_failed`);
     }

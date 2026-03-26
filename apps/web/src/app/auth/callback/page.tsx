@@ -1,27 +1,20 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { decodeJwt } from 'jose';
 import { setTokens } from '@/lib/api';
 import { ROUTES } from '@/lib/constants';
 
 export default function OAuthCallbackPage() {
-  return (
-    <Suspense>
-      <OAuthCallbackInner />
-    </Suspense>
-  );
-}
-
-function OAuthCallbackInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
-    const accessToken = searchParams.get('accessToken');
-    const refreshToken = searchParams.get('refreshToken');
-    const error = searchParams.get('error');
+    const hash = window.location.hash.substring(1); // remove #
+    const params = new URLSearchParams(hash);
+    const accessToken = params.get('accessToken');
+    const refreshToken = params.get('refreshToken');
+    const error = params.get('error');
 
     if (error) {
       router.replace(`${ROUTES.login}?error=${error}`);
@@ -38,7 +31,7 @@ function OAuthCallbackInner() {
     } else {
       router.replace(ROUTES.login);
     }
-  }, [router, searchParams]);
+  }, [router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">

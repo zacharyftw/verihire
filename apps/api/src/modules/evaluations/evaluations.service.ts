@@ -965,6 +965,42 @@ export class EvaluationsService {
         `Job application ${applicationId} completed: average score ${averageScore}% across ${scores.length} challenges`
       );
 
+      // Generate certificate if score is passing
+      if (averageScore >= 70) {
+        try {
+          const appForCert = await prisma.jobApplication.findUnique({
+            where: { id: applicationId },
+            include: {
+              job: { select: { title: true } },
+              candidate: { select: { id: true } },
+            },
+          });
+
+          if (appForCert) {
+            let domainLevel = 'BEGINNER';
+            if (averageScore >= 85) domainLevel = 'EXPERT';
+            else if (averageScore >= 70) domainLevel = 'ADVANCED';
+            else if (averageScore >= 60) domainLevel = 'INTERMEDIATE';
+
+            await this.certificateService.generateCertificate({
+              candidateId: appForCert.candidate.id,
+              jobApplicationId: applicationId,
+              finalScore: averageScore,
+              aiScore: averageScore,
+              criteriaScores: {},
+              confidence: 1.0,
+              domainTag: appForCert.job.title,
+              domainLevel,
+              title: `Certified ${appForCert.job.title}`,
+            });
+          }
+        } catch (err) {
+          this.logger.error(
+            `Failed to generate certificate for application ${applicationId}: ${err}`
+          );
+        }
+      }
+
       // Notify the recruiter that the candidate completed all tests
       try {
         const application = await prisma.jobApplication.findUnique({

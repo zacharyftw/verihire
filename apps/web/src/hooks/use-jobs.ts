@@ -81,6 +81,10 @@ export function deleteJob(id: string) {
   return api.delete(`/jobs/${id}`);
 }
 
+export function addJobSkill(jobId: string, skillId: string, required = true) {
+  return api.post(`/jobs/${jobId}/skills`, { skillId, required });
+}
+
 // Shortlist
 export function useJobShortlist(jobId: string | undefined, stage?: string) {
   const params = stage ? `?stage=${stage}` : '';

@@ -125,7 +125,7 @@ export class JobsController {
    */
   @Get(':id')
   async getJob(@Param('id', ParseUUIDPipe) id: string) {
-    return this.jobsService.getJobById(id, true);
+    return this.jobsService.getJobById(id, true, true);
   }
 
   /**

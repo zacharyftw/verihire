@@ -25,14 +25,18 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { createJob } from '@/hooks/use-jobs';
+import { createJob, addJobSkill } from '@/hooks/use-jobs';
+import { useSkills } from '@/hooks/use-skills';
 import { jobSchema, type JobValues } from '@/lib/validations';
 import { ROUTES } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 
 export default function NewJobPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const { data: skillsData } = useSkills();
 
   const form = useForm<JobValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,6 +55,9 @@ export default function NewJobPage() {
     setSaving(true);
     try {
       const job = await createJob(values);
+      for (const skillId of selectedSkills) {
+        await addJobSkill(job.id, skillId, true);
+      }
       toast({ title: 'Job created' });
       router.push(ROUTES.jobDetail(job.id));
     } catch (err) {
@@ -238,6 +245,37 @@ export default function NewJobPage() {
                     </FormItem>
                   )}
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Required Skills</label>
+                {skillsData?.items && skillsData.items.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {skillsData.items.map(skill => {
+                      const isSelected = selectedSkills.includes(skill.id);
+                      return (
+                        <Badge
+                          key={skill.id}
+                          variant={isSelected ? 'default' : 'outline'}
+                          className="cursor-pointer select-none"
+                          onClick={() =>
+                            setSelectedSkills(prev =>
+                              isSelected ? prev.filter(id => id !== skill.id) : [...prev, skill.id]
+                            )
+                          }
+                        >
+                          {skill.name}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No skills available</p>
+                )}
+                {selectedSkills.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedSkills.length} skill{selectedSkills.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
               </div>
               <Button type="submit" disabled={saving}>
                 {saving ? 'Creating...' : 'Create Job'}

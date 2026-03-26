@@ -289,7 +289,7 @@ export class JobsService {
     };
   }
 
-  async getJobById(jobId: string, trackView = false) {
+  async getJobById(jobId: string, trackView = false, publicOnly = false) {
     const job = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
@@ -324,6 +324,11 @@ export class JobsService {
     });
 
     if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    // For public access, only show active jobs
+    if (publicOnly && job.status !== 'ACTIVE') {
       throw new NotFoundException('Job not found');
     }
 
@@ -930,6 +935,12 @@ export class JobsService {
 
     if (job.status !== 'ACTIVE') {
       throw new BadRequestException('This job is not currently accepting applications');
+    }
+
+    if (!job.jobSkills || job.jobSkills.length === 0) {
+      throw new BadRequestException(
+        'This job has no skill requirements configured yet. Please try again later.'
+      );
     }
 
     // Check candidate has uploaded a resume

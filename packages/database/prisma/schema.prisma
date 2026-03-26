@@ -751,6 +751,9 @@ model JobApplication {
   conversation    Conversation?
 
   @@unique([jobId, candidateId])
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([status])
   @@map("job_applications")
 }
 

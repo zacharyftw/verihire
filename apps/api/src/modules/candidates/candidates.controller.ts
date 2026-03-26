@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -367,8 +368,15 @@ export class CandidatesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get candidate profile for recruiter view' })
   @ApiResponse({ status: 200, description: 'Candidate profile' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Candidate not found' })
-  async getCandidateProfile(@Param('id') id: string): Promise<unknown> {
+  async getCandidateProfile(
+    @Param('id') id: string,
+    @Request() req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } }
+  ): Promise<unknown> {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.candidatesService.getProfileForRecruiter(id);
   }
 
@@ -376,7 +384,13 @@ export class CandidatesController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get AI resume analysis for a candidate' })
-  async getResumeAnalysis(@Param('id') id: string) {
+  async getResumeAnalysis(
+    @Param('id') id: string,
+    @Request() req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } }
+  ) {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.candidatesService.getResumeAnalysis(id);
   }
 
@@ -384,7 +398,13 @@ export class CandidatesController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get domain scores for a candidate' })
-  async getDomainScores(@Param('id') id: string) {
+  async getDomainScores(
+    @Param('id') id: string,
+    @Request() req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } }
+  ) {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.candidatesService.getDomainScores(id);
   }
 
@@ -401,7 +421,14 @@ export class CandidatesController {
   @ApiResponse({ status: 200, description: 'Generated interview questions' })
   @ApiResponse({ status: 400, description: 'Missing domain or no resume analysis' })
   @ApiResponse({ status: 404, description: 'Candidate not found' })
-  async getInterviewQuestions(@Param('id') id: string, @Query('domain') domain: string) {
+  async getInterviewQuestions(
+    @Param('id') id: string,
+    @Query('domain') domain: string,
+    @Request() req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } }
+  ) {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
     if (!domain) {
       throw new BadRequestException('domain query parameter is required');
     }

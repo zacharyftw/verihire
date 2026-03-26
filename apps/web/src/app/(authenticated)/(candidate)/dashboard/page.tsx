@@ -60,6 +60,10 @@ export default function CandidateDashboardPage() {
   const scoreBelowThreshold =
     challengesCompleted > 0 && avgScore !== null && avgScore < PASSING_SCORE;
 
+  const hasResume = !!profile?.resumeUrl;
+  const hasHeadline = !!profile?.headline;
+  const hasApplications = (applications?.length ?? 0) > 0;
+
   return (
     <div>
       <PageHeader
@@ -74,6 +78,54 @@ export default function CandidateDashboardPage() {
           </Button>
         }
       />
+
+      {profile && !hasResume && (
+        <Card className="mb-6 border-amber-200 bg-amber-50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div>
+              <h3 className="font-medium">Complete Your Profile</h3>
+              <p className="text-sm text-muted-foreground">
+                Upload your resume to start applying for jobs
+              </p>
+            </div>
+            <Button asChild>
+              <Link href={ROUTES.profile}>Upload Resume</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {profile && hasResume && !hasHeadline && (
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div>
+              <h3 className="font-medium">Add a Headline</h3>
+              <p className="text-sm text-muted-foreground">
+                A headline helps recruiters understand your expertise at a glance
+              </p>
+            </div>
+            <Button variant="outline" asChild>
+              <Link href={ROUTES.profile}>Edit Profile</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {profile && hasResume && hasHeadline && !hasApplications && !applicationsLoading && (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div>
+              <h3 className="font-medium">Start Applying</h3>
+              <p className="text-sm text-muted-foreground">
+                Your profile is ready. Browse open positions and submit your first application.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href={ROUTES.candidateJobs}>Browse Jobs</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map(stat => (
