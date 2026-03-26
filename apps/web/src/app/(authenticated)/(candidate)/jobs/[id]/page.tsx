@@ -222,11 +222,27 @@ export default function JobDetailPage() {
                     <p className="text-sm font-medium">Application submitted!</p>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    You have {applied.challenges.length} challenge
-                    {applied.challenges.length !== 1 ? 's' : ''} to complete.
+                    {applied.challenges.length > 0
+                      ? `Complete ${applied.challenges.length} challenge${applied.challenges.length !== 1 ? 's' : ''} to proceed:`
+                      : 'Your application is being processed.'}
                   </p>
+                  {applied.challenges.length > 0 && (
+                    <div className="space-y-2">
+                      {applied.challenges.map((c, i) => (
+                        <div
+                          key={c.id}
+                          className="flex items-center gap-2 rounded-md border p-2 text-sm"
+                        >
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                            {i + 1}
+                          </span>
+                          <span>{c.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <Button className="w-full" asChild>
-                    <Link href={ROUTES.challenges}>Go to Challenges</Link>
+                    <Link href={ROUTES.challenges}>Start Challenges</Link>
                   </Button>
                 </div>
               ) : existingApplication ? (
@@ -295,10 +311,23 @@ export default function JobDetailPage() {
                         <Link href={ROUTES.profile}>Upload Resume</Link>
                       </Button>
                     </>
+                  ) : applying ? (
+                    <div className="space-y-4 text-center">
+                      <div className="flex flex-col items-center gap-3 py-4">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                        <div>
+                          <p className="text-sm font-medium">Generating your challenges...</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Our AI is creating personalized skill assessments based on this
+                            job&apos;s requirements. This may take 15-20 seconds.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <>
-                      <Button className="w-full" onClick={handleApply} disabled={applying}>
-                        {applying ? 'Applying...' : 'Apply Now'}
+                      <Button className="w-full" onClick={handleApply}>
+                        Apply Now
                       </Button>
                       <p className="text-xs text-muted-foreground">
                         You will be assigned skill challenges after applying.
