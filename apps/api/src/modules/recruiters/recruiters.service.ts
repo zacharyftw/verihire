@@ -4,7 +4,6 @@ import {
   CreateRecruiterProfileDto,
   UpdateRecruiterProfileDto,
   RecruiterProfileResponseDto,
-  RecruiterStatsDto,
 } from './dto/recruiter.dto';
 
 @Injectable()
@@ -115,60 +114,29 @@ export class RecruitersService {
     return this.mapToResponse(profile);
   }
 
-  async getStats(id: string): Promise<RecruiterStatsDto> {
-    const [activeJobs, totalJobs, shortlists, hired] = await Promise.all([
+  async getStats(id: string) {
+    const [activeJobs, totalApplicants, shortlisted, hired] = await Promise.all([
       prisma.job.count({
-        where: {
-          recruiterId: id,
-          status: 'ACTIVE',
-        },
+        where: { recruiterId: id, status: 'ACTIVE' },
       }),
-      prisma.job.count({
-        where: {
-          recruiterId: id,
-        },
+      prisma.jobApplication.count({
+        where: { job: { recruiterId: id } },
       }),
       prisma.shortlist.count({
-        where: {
-          recruiterId: id,
-        },
+        where: { recruiterId: id },
       }),
       prisma.shortlist.count({
-        where: {
-          recruiterId: id,
-          stage: 'HIRED',
-        },
+        where: { recruiterId: id, stage: 'HIRED' },
       }),
     ]);
 
-    // Calculate avg time to hire (simplified)
-    const hiredCandidates = await prisma.shortlist.findMany({
-      where: {
-        recruiterId: id,
-        stage: 'HIRED',
-      },
-      select: {
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    const avgTimeToHire =
-      hiredCandidates.length > 0
-        ? hiredCandidates.reduce(
-            (acc, s) => acc + (s.updatedAt.getTime() - s.createdAt.getTime()),
-            0
-          ) /
-          hiredCandidates.length /
-          (1000 * 60 * 60 * 24) // Convert to days
-        : 0;
+    const hireRate = shortlisted > 0 ? Math.round((hired / shortlisted) * 100) : 0;
 
     return {
       activeJobs,
-      totalJobs,
-      totalShortlisted: shortlists,
-      totalHired: hired,
-      avgTimeToHire: Math.round(avgTimeToHire),
+      totalApplicants,
+      shortlisted,
+      hireRate,
     };
   }
 
