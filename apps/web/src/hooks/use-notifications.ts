@@ -29,7 +29,9 @@ export function useNotifications(options?: {
   if (options?.unreadOnly) params.set('unreadOnly', 'true');
   const qs = params.toString();
 
-  return useSWR<NotificationsResponse>(`/notifications${qs ? `?${qs}` : ''}`);
+  return useSWR<NotificationsResponse>(`/notifications${qs ? `?${qs}` : ''}`, {
+    refreshInterval: 10000,
+  });
 }
 
 export function useUnreadCount() {

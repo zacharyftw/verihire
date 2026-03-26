@@ -1,9 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Building2, DollarSign, Clock, CheckCircle2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  MapPin,
+  Building2,
+  DollarSign,
+  Clock,
+  CheckCircle2,
+  MessageSquare,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +23,8 @@ import { useJob } from '@/hooks/use-jobs';
 import { useMyApplications, applyToJob } from '@/hooks/use-applications';
 import { useCandidateProfile } from '@/hooks/use-candidate';
 import { ROUTES, APPLICATION_STATUS_LABELS, APPLICATION_STATUS_COLORS } from '@/lib/constants';
+import { startConversation } from '@/hooks/use-messages';
+import { toast } from '@/hooks/use-toast';
 
 const REMOTE_LABELS: Record<string, string> = {
   REMOTE: 'Remote',
@@ -43,6 +53,7 @@ function formatSalary(min?: number | null, max?: number | null, currency?: strin
 
 export default function JobDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
   const { data: job, isLoading } = useJob(id);
@@ -56,8 +67,26 @@ export default function JobDetailPage() {
     challenges: Array<{ id: string; title: string; skillName: string }>;
   } | null>(null);
   const [error, setError] = useState('');
+  const [messaging, setMessaging] = useState(false);
 
   const existingApplication = applications?.find(a => a.jobId === id);
+
+  const handleMessageRecruiter = async () => {
+    if (!job?.recruiter?.userId || !existingApplication) return;
+    setMessaging(true);
+    try {
+      await startConversation(job.recruiter.userId, existingApplication.id);
+      router.push('/messages');
+    } catch (err) {
+      toast({
+        title: 'Failed to start conversation',
+        variant: 'destructive',
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setMessaging(false);
+    }
+  };
 
   const handleApply = async () => {
     setApplying(true);
@@ -227,6 +256,17 @@ export default function JobDetailPage() {
                   {existingApplication.status === 'TESTING' && (
                     <Button className="w-full" asChild>
                       <Link href={ROUTES.challenges}>Continue Challenges</Link>
+                    </Button>
+                  )}
+                  {job?.recruiter?.userId && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleMessageRecruiter}
+                      disabled={messaging}
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      {messaging ? 'Opening...' : 'Message Recruiter'}
                     </Button>
                   )}
                 </div>

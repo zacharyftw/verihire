@@ -41,6 +41,7 @@ export interface JobWithRelations extends Job {
     minLevel?: string;
     required: boolean;
   }>;
+  recruiter?: { id: string; userId: string; user: { firstName: string; lastName: string } };
   createdAt: string;
 }
 

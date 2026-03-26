@@ -6,10 +6,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { prisma } from '@verihire/database';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
+
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   /**
    * Find existing or create new conversation for a job application.
@@ -82,24 +85,56 @@ export class MessagesService {
       });
 
       if (existing) return existing;
-
-      // Verify the job application exists
-      const application = await prisma.jobApplication.findUnique({
-        where: { id: jobApplicationId },
-      });
-      if (!application) {
-        throw new NotFoundException('Job application not found');
-      }
     }
 
-    // Verify both users exist
+    // Verify both users exist and get their types
     const [initiator, other] = await Promise.all([
-      prisma.user.findUnique({ where: { id: initiatorUserId }, select: { id: true } }),
-      prisma.user.findUnique({ where: { id: otherUserId }, select: { id: true } }),
+      prisma.user.findUnique({
+        where: { id: initiatorUserId },
+        select: { id: true, userType: true, firstName: true, lastName: true },
+      }),
+      prisma.user.findUnique({ where: { id: otherUserId }, select: { id: true, userType: true } }),
     ]);
 
     if (!initiator) throw new NotFoundException('Initiator user not found');
     if (!other) throw new NotFoundException('Other user not found');
+
+    // Authorization: verify conversation participants are valid
+    if (jobApplicationId) {
+      const application = await prisma.jobApplication.findUnique({
+        where: { id: jobApplicationId },
+        include: {
+          candidate: { select: { userId: true } },
+          job: { include: { recruiter: { select: { userId: true } } } },
+        },
+      });
+
+      if (!application) {
+        throw new NotFoundException('Job application not found');
+      }
+
+      if (!application.job.recruiter) {
+        throw new BadRequestException('Job has no assigned recruiter');
+      }
+
+      const candidateUserId = application.candidate.userId;
+      const recruiterUserId = application.job.recruiter.userId;
+
+      const participantIds = new Set([initiatorUserId, otherUserId]);
+      if (!participantIds.has(candidateUserId) || !participantIds.has(recruiterUserId)) {
+        throw new ForbiddenException(
+          'Conversation participants must be the applicant candidate and the job recruiter'
+        );
+      }
+    } else {
+      // Without a job application, one must be CANDIDATE and the other RECRUITER
+      const types = new Set([initiator.userType, other.userType]);
+      if (!types.has('CANDIDATE') || !types.has('RECRUITER')) {
+        throw new ForbiddenException(
+          'Conversations can only be started between a candidate and a recruiter'
+        );
+      }
+    }
 
     // If no jobApplicationId, check for existing conversation between these two users
     if (!jobApplicationId) {
@@ -132,7 +167,7 @@ export class MessagesService {
       if (existingConversation) return existingConversation;
     }
 
-    return prisma.conversation.create({
+    const conversation = await prisma.conversation.create({
       data: {
         jobApplicationId: jobApplicationId || null,
         participants: {
@@ -156,6 +191,22 @@ export class MessagesService {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
+
+    // Notify the other user about the new conversation
+    try {
+      const initiatorName =
+        `${initiator.firstName || ''} ${initiator.lastName || ''}`.trim() || 'Someone';
+      await this.notificationsService.create(otherUserId, {
+        type: 'GENERAL' as any,
+        title: 'New message',
+        message: `${initiatorName} started a conversation with you`,
+        link: '/messages',
+      });
+    } catch (err) {
+      this.logger.warn('Failed to send new conversation notification', err);
+    }
+
+    return conversation;
   }
 
   /**

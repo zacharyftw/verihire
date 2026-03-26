@@ -314,6 +314,7 @@ export class JobsService {
         recruiter: {
           select: {
             id: true,
+            userId: true,
             user: {
               select: { firstName: true, lastName: true },
             },
@@ -445,6 +446,25 @@ export class JobsService {
       data: { applicationsCount: { increment: 1 } },
     });
 
+    // Notify candidate they've been shortlisted
+    try {
+      const candidateProfile = await prisma.candidateProfile.findUnique({
+        where: { id: data.candidateId },
+        select: { userId: true },
+      });
+
+      if (candidateProfile) {
+        await this.notificationsService.create(candidateProfile.userId, {
+          type: 'SHORTLISTED',
+          title: `You've been shortlisted`,
+          message: `A recruiter has shortlisted you for a position.`,
+          link: `/dashboard`,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to send SHORTLISTED notification: ${err}`);
+    }
+
     return shortlist;
   }
 
@@ -484,7 +504,7 @@ export class JobsService {
       updateData.stageHistory = history;
     }
 
-    return prisma.shortlist.update({
+    const updated = await prisma.shortlist.update({
       where: { id: shortlist.id },
       data: updateData,
       include: {
@@ -497,6 +517,45 @@ export class JobsService {
         },
       },
     });
+
+    // Notify candidate when stage changes
+    if (data.stage) {
+      try {
+        const candidateProfile = await prisma.candidateProfile.findUnique({
+          where: { id: candidateId },
+          select: { userId: true },
+        });
+
+        const stageLabels: Record<string, string> = {
+          SCREENING: 'moved to screening',
+          INTERVIEW: 'scheduled for interview',
+          ASSESSMENT: 'moved to assessment',
+          OFFER: 'received an offer',
+          HIRED: 'been hired',
+          REJECTED: 'not been selected',
+        };
+
+        if (candidateProfile) {
+          const stageMsg = stageLabels[data.stage] || `been updated to ${data.stage}`;
+          const notifType =
+            data.stage === 'REJECTED'
+              ? 'REJECTED'
+              : data.stage === 'HIRED'
+                ? 'HIRED'
+                : 'APPLICATION_STATUS';
+          await this.notificationsService.create(candidateProfile.userId, {
+            type: notifType as any,
+            title: `Application update`,
+            message: `You have ${stageMsg}.`,
+            link: `/dashboard`,
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to send stage change notification: ${err}`);
+      }
+    }
+
+    return updated;
   }
 
   async removeFromShortlist(jobId: string, candidateId: string, recruiterId: string) {
@@ -1008,6 +1067,24 @@ export class JobsService {
       // Application is still created even if challenge generation fails
     }
 
+    // Notify candidate that their application was received
+    try {
+      const candidateUser = await prisma.candidateProfile.findUnique({
+        where: { id: candidateId },
+        select: { userId: true },
+      });
+      if (candidateUser) {
+        await this.notificationsService.create(candidateUser.userId, {
+          type: 'APPLICATION_STATUS',
+          title: `Application submitted`,
+          message: `Your application for ${job.title} has been received. Complete the skill challenges to proceed.`,
+          link: `/dashboard`,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to send candidate application confirmation notification: ${err}`);
+    }
+
     // Notify the recruiter about the new application
     try {
       if (job.recruiterId) {
@@ -1020,7 +1097,7 @@ export class JobsService {
             type: 'APPLICATION_RECEIVED',
             title: `New application for ${job.title}`,
             message: 'A candidate has applied to your job posting.',
-            link: `/recruiter/jobs/${jobId}`,
+            link: `/recruiter/jobs/${jobId}/applicants`,
             metadata: { jobId, applicationId: application.id },
           });
         }

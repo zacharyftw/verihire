@@ -1,8 +1,18 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Briefcase, Globe, Award, ExternalLink, BarChart3 } from 'lucide-react';
+import {
+  ArrowLeft,
+  MapPin,
+  Briefcase,
+  Globe,
+  Award,
+  ExternalLink,
+  BarChart3,
+  MessageSquare,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +21,8 @@ import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
 import { ROUTES, DIFFICULTY_LABELS } from '@/lib/constants';
 import { useDomainScores, type DomainScore } from '@/hooks/use-candidate';
+import { startConversation } from '@/hooks/use-messages';
+import { toast } from '@/hooks/use-toast';
 import useSWR from 'swr';
 
 interface CandidateDetail {
@@ -45,9 +57,28 @@ interface CandidateDetail {
 
 export default function CandidateDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const { data: candidate, isLoading } = useSWR<CandidateDetail>(`/candidates/${id}/profile`);
   const { data: domainScoresData } = useDomainScores(id);
+  const [messaging, setMessaging] = useState(false);
+
+  const handleMessage = async () => {
+    if (!candidate?.userId) return;
+    setMessaging(true);
+    try {
+      await startConversation(candidate.userId);
+      router.push('/messages');
+    } catch (err) {
+      toast({
+        title: 'Failed to start conversation',
+        variant: 'destructive',
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setMessaging(false);
+    }
+  };
 
   if (isLoading) return <PageLoader />;
   if (!candidate) return <div>Candidate not found</div>;
@@ -67,10 +98,18 @@ export default function CandidateDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{fullName}</CardTitle>
-          {candidate.headline && (
-            <p className="text-sm text-muted-foreground">{candidate.headline}</p>
-          )}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>{fullName}</CardTitle>
+              {candidate.headline && (
+                <p className="mt-1 text-sm text-muted-foreground">{candidate.headline}</p>
+              )}
+            </div>
+            <Button variant="outline" onClick={handleMessage} disabled={messaging}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              {messaging ? 'Opening...' : 'Message Candidate'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">

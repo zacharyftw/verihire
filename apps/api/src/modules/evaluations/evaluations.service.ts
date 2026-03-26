@@ -997,7 +997,7 @@ export class EvaluationsService {
               type: 'APPLICATION_COMPLETED',
               title: `${candidateName} completed tests for ${application.job.title}`,
               message: `Average score: ${averageScore}% across ${scores.length} challenges.`,
-              link: `/recruiter/jobs/${application.jobId}`,
+              link: `/recruiter/jobs/${application.jobId}/applicants`,
               metadata: {
                 jobId: application.jobId,
                 applicationId,
