@@ -18,6 +18,7 @@ import {
 import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { useCandidateSearch } from '@/hooks/use-candidates-search';
+import { useSkills } from '@/hooks/use-skills';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ROUTES } from '@/lib/constants';
 
@@ -26,6 +27,8 @@ export default function CandidateSearchPage() {
   const [remotePreference, setRemotePreference] = useState('');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minExperience, setMinExperience] = useState('');
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const { data: skillsData } = useSkills();
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -34,6 +37,7 @@ export default function CandidateSearchPage() {
     remotePreference: remotePreference && remotePreference !== 'all' ? remotePreference : undefined,
     verifiedOnly: verifiedOnly || undefined,
     minExperience: minExperience && minExperience !== 'all' ? parseInt(minExperience) : undefined,
+    skillIds: selectedSkills.length > 0 ? selectedSkills : undefined,
   });
 
   const candidates = data?.items ?? [];
@@ -86,6 +90,42 @@ export default function CandidateSearchPage() {
           Verified
         </Button>
       </div>
+
+      {/* Skill filter */}
+      {skillsData?.items && skillsData.items.length > 0 && (
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Filter by skills</p>
+          <div className="flex flex-wrap gap-2">
+            {skillsData.items.map((skill: { id: string; name: string }) => {
+              const isSelected = selectedSkills.includes(skill.id);
+              return (
+                <Badge
+                  key={skill.id}
+                  variant={isSelected ? 'default' : 'outline'}
+                  className="cursor-pointer select-none"
+                  onClick={() =>
+                    setSelectedSkills(prev =>
+                      isSelected ? prev.filter(id => id !== skill.id) : [...prev, skill.id]
+                    )
+                  }
+                >
+                  {skill.name}
+                </Badge>
+              );
+            })}
+            {selectedSkills.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={() => setSelectedSkills([])}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
