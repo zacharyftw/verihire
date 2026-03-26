@@ -18,8 +18,18 @@ import { PageHeader } from '@/components/page-header';
 import { SearchInput } from '@/components/search-input';
 import { EmptyState } from '@/components/empty-state';
 import { useJobSearch } from '@/hooks/use-jobs';
+import { useMyApplications } from '@/hooks/use-applications';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ROUTES } from '@/lib/constants';
+
+const APP_STATUS_COLORS: Record<string, string> = {
+  APPLIED: 'bg-blue-500 text-white',
+  TESTING: 'bg-yellow-500 text-white',
+  COMPLETED: 'bg-green-500 text-white',
+  SHORTLISTED: 'bg-emerald-500 text-white',
+  REJECTED: 'bg-red-500 text-white',
+  HIRED: 'bg-purple-500 text-white',
+};
 
 const REMOTE_LABELS: Record<string, string> = {
   REMOTE: 'Remote',
@@ -59,6 +69,9 @@ export default function JobsPage() {
   const [offset, setOffset] = useState(0);
   const debouncedSearch = useDebounce(search);
   const limit = 20;
+
+  const { data: applications } = useMyApplications();
+  const appliedJobMap = new Map((applications ?? []).map(a => [a.jobId, a.status]));
 
   const { data, isLoading } = useJobSearch({
     status: 'ACTIVE',
@@ -157,21 +170,35 @@ export default function JobsPage() {
             {jobs.map(job => {
               const salary = formatSalary(job.salaryMin, job.salaryMax, job.salaryCurrency);
               const skills = job.jobSkills || [];
+              const appStatus = appliedJobMap.get(job.id);
 
               return (
                 <Link key={job.id} href={ROUTES.candidateJobDetail(job.id)}>
-                  <Card className="h-full transition-shadow hover:shadow-md">
+                  <Card
+                    className={`h-full transition-shadow hover:shadow-md ${appStatus ? 'border-l-4 border-l-primary' : ''}`}
+                  >
                     <CardHeader>
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-base">{job.title}</CardTitle>
-                        {job.remotePolicy && (
-                          <Badge
-                            variant="secondary"
-                            className={REMOTE_COLORS[job.remotePolicy] || ''}
-                          >
-                            {REMOTE_LABELS[job.remotePolicy] || job.remotePolicy}
-                          </Badge>
-                        )}
+                        <div className="flex shrink-0 gap-1">
+                          {appStatus && (
+                            <Badge
+                              className={APP_STATUS_COLORS[appStatus] || 'bg-gray-500 text-white'}
+                            >
+                              {appStatus === 'TESTING'
+                                ? 'In Progress'
+                                : appStatus.charAt(0) + appStatus.slice(1).toLowerCase()}
+                            </Badge>
+                          )}
+                          {job.remotePolicy && (
+                            <Badge
+                              variant="secondary"
+                              className={REMOTE_COLORS[job.remotePolicy] || ''}
+                            >
+                              {REMOTE_LABELS[job.remotePolicy] || job.remotePolicy}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       <CardDescription className="flex items-center gap-1">
                         <Building2 className="h-3 w-3" />
