@@ -375,8 +375,8 @@ export class JobsService {
     ]);
 
     return {
-      data: jobs,
-      meta: { total, limit, offset, hasMore: offset + jobs.length < total },
+      items: jobs,
+      pagination: { total },
     };
   }
 

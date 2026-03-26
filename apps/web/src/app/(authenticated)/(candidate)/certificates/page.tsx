@@ -50,7 +50,7 @@ export default function CertificatesPage() {
                   <span className="text-sm font-medium">VeriHire Certificate</span>
                 </div>
                 <p className="mt-2 text-lg font-bold">
-                  {(cert as any).metadata?.title ?? cert.skill?.name ?? 'Skill Certificate'}
+                  {cert.metadata?.title ?? cert.skill?.name ?? 'Skill Certificate'}
                 </p>
               </div>
               <CardContent className="space-y-3 p-4">

@@ -98,21 +98,15 @@ export class CompaniesService {
       where.verified = true;
     }
 
-    const [companies, total] = await Promise.all([
-      prisma.company.findMany({
-        where,
-        take: limit,
-        skip: offset,
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.company.count({ where }),
-    ]);
+    const companies = await prisma.company.findMany({
+      where,
+      take: limit,
+      skip: offset,
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
-      companies: companies.map(c => this.mapToResponse(c)),
-      total,
-      limit,
-      offset,
+      items: companies.map(c => this.mapToResponse(c)),
     };
   }
 

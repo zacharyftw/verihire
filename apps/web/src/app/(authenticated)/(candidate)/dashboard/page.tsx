@@ -24,6 +24,7 @@ import { useMyCertificates } from '@/hooks/use-certificates';
 import { useMyApplications } from '@/hooks/use-applications';
 import {
   ROUTES,
+  PASSING_SCORE,
   DIFFICULTY_COLORS,
   SUBMISSION_STATUS_LABELS,
   SUBMISSION_STATUS_COLORS,
@@ -56,7 +57,8 @@ export default function CandidateDashboardPage() {
   const certificates = certificatesData?.certificates ?? [];
   const avgScore = stats?.averageScore ?? null;
   const challengesCompleted = stats?.challengesCompleted ?? 0;
-  const scoreBelowThreshold = challengesCompleted > 0 && avgScore !== null && avgScore < 70;
+  const scoreBelowThreshold =
+    challengesCompleted > 0 && avgScore !== null && avgScore < PASSING_SCORE;
 
   return (
     <div>
@@ -195,8 +197,8 @@ export default function CandidateDashboardPage() {
                 <p className="mt-0.5 text-xs text-yellow-700">
                   Your current average is{' '}
                   <span className="font-bold">{Math.round(avgScore!)}%</span>. You need at least{' '}
-                  <span className="font-bold">70%</span> across all challenges to earn a
-                  certificate. Keep practicing to improve your score!
+                  <span className="font-bold">{PASSING_SCORE}%</span> across all challenges to earn
+                  a certificate. Keep practicing to improve your score!
                 </p>
               </div>
             </div>
@@ -204,7 +206,7 @@ export default function CandidateDashboardPage() {
             <EmptyState
               icon={Award}
               title="No certificates yet"
-              description="Complete all your challenges with a score ≥ 70% to earn a certificate"
+              description={`Complete all your challenges with a score ≥ ${PASSING_SCORE}% to earn a certificate`}
             />
           ) : (
             <div className="space-y-3">
@@ -219,7 +221,7 @@ export default function CandidateDashboardPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {(cert as any).metadata?.title ??
+                        {cert.metadata?.title ??
                           cert.skill?.name ??
                           cert.challenge?.title ??
                           'Certificate'}
@@ -278,7 +280,7 @@ export default function CandidateDashboardPage() {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium">{name}</p>
                       <Badge variant="secondary">{domain.level}</Badge>
-                      {domain.score >= 70 && domain.count >= 3 && (
+                      {domain.score >= PASSING_SCORE && domain.count >= 3 && (
                         <Badge className="bg-green-600 text-white hover:bg-green-600">
                           <CheckCircle2 className="mr-1 h-3 w-3" />
                           Certified

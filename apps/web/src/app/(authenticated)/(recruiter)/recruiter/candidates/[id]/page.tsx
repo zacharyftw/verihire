@@ -34,6 +34,12 @@ interface CandidateDetail {
     challenge?: { title: string };
     skill?: { name: string };
     score: number;
+    metadata?: {
+      title?: string;
+      certificateType?: string;
+      domainTag?: string;
+      domainLevel?: string;
+    };
   }>;
 }
 
@@ -198,7 +204,7 @@ export default function CandidateDetailPage() {
                         <Award className="h-4 w-4 text-primary" />
                         <div>
                           <p className="text-sm font-medium">
-                            {(cert as any).metadata?.title ??
+                            {cert.metadata?.title ??
                               cert.skill?.name ??
                               cert.challenge?.title ??
                               'Certificate'}

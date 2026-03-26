@@ -20,6 +20,7 @@ export interface Submission extends BaseSubmission {
 export interface Certificate extends BaseCertificate {
   skill?: Skill | null;
   challenge?: Challenge | null;
+  metadata?: { title?: string; certificateType?: string; domainTag?: string; domainLevel?: string };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

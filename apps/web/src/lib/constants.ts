@@ -27,10 +27,13 @@ export const ROUTES = {
   jobNew: '/recruiter/jobs/new',
   jobDetail: (id: string) => `/recruiter/jobs/${id}`,
   jobShortlist: (id: string) => `/recruiter/jobs/${id}/shortlist`,
+  jobApplicants: (id: string) => `/recruiter/jobs/${id}/applicants`,
   jobMatches: (id: string) => `/recruiter/jobs/${id}/matches`,
   candidateSearch: '/recruiter/candidates',
   candidateProfile: (id: string) => `/recruiter/candidates/${id}`,
 } as const;
+
+export const PASSING_SCORE = 70;
 
 export const DIFFICULTY_LABELS: Record<string, string> = {
   BEGINNER: 'Beginner',

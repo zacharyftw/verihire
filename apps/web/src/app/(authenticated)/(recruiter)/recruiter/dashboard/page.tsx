@@ -134,7 +134,7 @@ export default function RecruiterDashboardPage() {
                     <tr
                       key={job.id}
                       className="group cursor-pointer transition-colors hover:bg-accent/50"
-                      onClick={() => router.push(`/recruiter/jobs/${job.id}/applicants`)}
+                      onClick={() => router.push(ROUTES.jobApplicants(job.id))}
                     >
                       <td className="py-3 pr-4">
                         <p className="font-medium group-hover:underline">{job.title}</p>
@@ -179,7 +179,7 @@ export default function RecruiterDashboardPage() {
                             <Link href={ROUTES.jobDetail(job.id)}>Details</Link>
                           </Button>
                           <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/recruiter/jobs/${job.id}/applicants`}>Applicants</Link>
+                            <Link href={ROUTES.jobApplicants(job.id)}>Applicants</Link>
                           </Button>
                         </div>
                       </td>

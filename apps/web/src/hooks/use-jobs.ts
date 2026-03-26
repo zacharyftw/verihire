@@ -14,7 +14,7 @@ interface JobSearchFilters {
   search?: string;
   remotePolicy?: string;
   employmentType?: string;
-  location?: string;
+  locationCity?: string;
   limit?: number;
   offset?: number;
 }

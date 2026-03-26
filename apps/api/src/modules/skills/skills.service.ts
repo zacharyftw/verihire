@@ -29,39 +29,30 @@ export class SkillsService {
       where.isActive = isActive;
     }
 
-    const [skills, total] = await Promise.all([
-      prisma.skill.findMany({
-        where,
-        include: {
-          category: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-          _count: {
-            select: {
-              certificates: true,
-              challengeTemplates: true,
-            },
+    const skills = await prisma.skill.findMany({
+      where,
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
           },
         },
-        orderBy: { name: 'asc' },
-        take: limit,
-        skip: offset,
-      }),
-      prisma.skill.count({ where }),
-    ]);
+        _count: {
+          select: {
+            certificates: true,
+            challengeTemplates: true,
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    });
 
     return {
-      data: skills,
-      meta: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + skills.length < total,
-      },
+      items: skills,
     };
   }
 

@@ -11,7 +11,12 @@ import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
 import { StatusBadge } from '@/components/status-badge';
 import { useSubmissionResults } from '@/hooks/use-submissions';
-import { ROUTES, SUBMISSION_STATUS_LABELS, SUBMISSION_STATUS_COLORS } from '@/lib/constants';
+import {
+  ROUTES,
+  PASSING_SCORE,
+  SUBMISSION_STATUS_LABELS,
+  SUBMISSION_STATUS_COLORS,
+} from '@/lib/constants';
 
 export default function SubmissionResultsPage() {
   const params = useParams();
@@ -25,7 +30,7 @@ export default function SubmissionResultsPage() {
   const evaluation = data.evaluation || data;
 
   const displayScore = submission.finalScore ?? submission.aiScore;
-  const isPassing = displayScore != null && displayScore >= 70;
+  const isPassing = displayScore != null && displayScore >= PASSING_SCORE;
   const isWaiting = ['SUBMITTED', 'EVALUATING'].includes(submission.status);
   const hasResults = displayScore != null;
 
