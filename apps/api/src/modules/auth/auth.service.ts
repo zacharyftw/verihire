@@ -120,9 +120,13 @@ export class AuthService {
       emailVerified: true,
     });
 
-    // Create candidate profile
+    // Create candidate profile and user role
     await prisma.candidateProfile.create({
       data: { userId: user.id },
+    });
+
+    await prisma.userRole.create({
+      data: { userId: user.id, role: 'CANDIDATE' },
     });
 
     if (profile.avatarUrl) {

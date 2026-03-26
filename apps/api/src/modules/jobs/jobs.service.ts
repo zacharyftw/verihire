@@ -1131,6 +1131,12 @@ Score each candidate for this specific role. Be critical — only give 80+ to tr
       data: { applicationsCount: { increment: 1 } },
     });
 
+    // Update application status to TESTING before attempting challenge generation
+    await prisma.jobApplication.update({
+      where: { id: application.id },
+      data: { status: 'TESTING' },
+    });
+
     // Generate challenges based on job's required skills
     const challengeIds: string[] = [];
 
@@ -1216,12 +1222,6 @@ Score each candidate for this specific role. Be critical — only give 80+ to tr
           `Generated ${challengeIds.length} challenges for application ${application.id} (job ${jobId})`
         );
       }
-
-      // Update application status to TESTING
-      await prisma.jobApplication.update({
-        where: { id: application.id },
-        data: { status: 'TESTING' },
-      });
     } catch (error) {
       this.logger.error(
         `Failed to generate challenges for application ${application.id}: ${error}`

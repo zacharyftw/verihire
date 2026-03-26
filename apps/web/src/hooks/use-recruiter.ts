@@ -7,11 +7,11 @@ export function useRecruiterProfile() {
 }
 
 export function useRecruiterStats() {
-  return useSWR('/recruiters/me/stats');
+  return useSWR('/recruiters/me/stats', { refreshInterval: 30000 });
 }
 
 export function useRecruiterDashboard() {
-  return useSWR('/analytics/recruiter/dashboard');
+  return useSWR('/analytics/recruiter/dashboard', { refreshInterval: 30000 });
 }
 
 export function createRecruiterProfile(data: Record<string, unknown>) {

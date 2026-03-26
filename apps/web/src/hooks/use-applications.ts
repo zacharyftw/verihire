@@ -29,7 +29,7 @@ interface ApplyResponse {
 }
 
 export function useMyApplications() {
-  return useSWR<Application[]>('/jobs/candidate/my-applications');
+  return useSWR<Application[]>('/jobs/candidate/my-applications', { refreshInterval: 15000 });
 }
 
 export async function applyToJob(jobId: string, coverLetter?: string) {

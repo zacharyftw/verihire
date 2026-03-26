@@ -47,7 +47,8 @@ export interface JobWithRelations extends Job {
 
 export function useMyJobs(filters: JobFilters = {}) {
   return useSWR<{ items: Job[]; pagination: { total: number } }>(
-    `/jobs/recruiter/my-jobs${buildQuery(filters as Record<string, string | number | undefined>)}`
+    `/jobs/recruiter/my-jobs${buildQuery(filters as Record<string, string | number | undefined>)}`,
+    { refreshInterval: 30000 }
   );
 }
 
