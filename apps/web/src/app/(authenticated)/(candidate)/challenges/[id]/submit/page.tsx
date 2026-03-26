@@ -450,6 +450,9 @@ echo "output here"
   }, [challengeLoading, subLoading, activeSubmission, id]);
 
   // Tab switch / focus loss detection — auto-submit after 2 violations
+  // We count when tab goes hidden, but submit when user comes BACK (browsers throttle hidden tabs)
+  const pendingAutoSubmit = useRef(false);
+
   useEffect(() => {
     function handleVisibilityChange() {
       if (document.hidden && !autoSubmittedRef.current) {
@@ -457,10 +460,13 @@ echo "output here"
         setTabWarning(tabSwitchCount.current);
 
         if (tabSwitchCount.current >= 2) {
-          // Auto-submit on 2nd violation
           autoSubmittedRef.current = true;
-          forceSubmit();
+          pendingAutoSubmit.current = true;
         }
+      } else if (!document.hidden && pendingAutoSubmit.current) {
+        // User came back — now submit (network works in foreground)
+        pendingAutoSubmit.current = false;
+        forceSubmit();
       }
     }
 
