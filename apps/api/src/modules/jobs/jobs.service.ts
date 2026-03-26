@@ -388,7 +388,7 @@ export class JobsService {
             },
           },
           _count: {
-            select: { shortlists: true },
+            select: { shortlists: true, applications: true },
           },
         },
         orderBy: { createdAt: 'desc' },
