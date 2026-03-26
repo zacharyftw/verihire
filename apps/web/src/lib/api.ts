@@ -111,28 +111,38 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-  upload: <T>(path: string, formData: FormData) => {
+  upload: async <T>(path: string, formData: FormData): Promise<T> => {
     const tokens = getTokens();
     const headers: Record<string, string> = {};
     if (tokens?.accessToken) {
       headers['Authorization'] = `Bearer ${tokens.accessToken}`;
     }
-    return fetch(`${API_URL}${path}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    }).then(async res => {
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new ApiError(
-          res.status,
-          body.error?.code || 'UNKNOWN',
-          body.error?.message || res.statusText
-        );
+
+    let res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
+
+    if (res.status === 401 && tokens?.refreshToken) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        const newTokens = getTokens();
+        headers['Authorization'] = `Bearer ${newTokens?.accessToken}`;
+        res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
+      } else {
+        clearTokens();
+        window.location.href = '/login';
+        throw new ApiError(401, 'UNAUTHORIZED', 'Session expired');
       }
-      const data = await res.json();
-      return (data.data !== undefined ? data.data : data) as T;
-    });
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(
+        res.status,
+        body.error?.code || 'UNKNOWN',
+        body.error?.message || res.statusText
+      );
+    }
+    const data = await res.json();
+    return (data.data !== undefined ? data.data : data) as T;
   },
 };
 

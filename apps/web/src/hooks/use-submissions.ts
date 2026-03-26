@@ -19,15 +19,15 @@ function buildQuery(filters: SubmissionFilters) {
 }
 
 export function useMySubmissions(filters: SubmissionFilters = {}) {
-  // api.get() auto-unwraps data.data, so SWR receives the array directly
-  const result = useSWR<Submission[]>(`/submissions/my${buildQuery(filters)}`);
+  const result = useSWR<{ items: Submission[]; meta: { total: number } } | Submission[]>(
+    `/submissions/my${buildQuery(filters)}`
+  );
 
-  const normalized = result.data
-    ? {
-        items: Array.isArray(result.data) ? result.data : [],
-        pagination: { total: Array.isArray(result.data) ? result.data.length : 0 },
-      }
-    : undefined;
+  const raw = result.data;
+  const items = Array.isArray(raw) ? raw : (raw?.items ?? []);
+  const total = Array.isArray(raw) ? raw.length : (raw?.meta?.total ?? items.length);
+
+  const normalized = raw ? { items, pagination: { total } } : undefined;
 
   return { ...result, data: normalized };
 }
