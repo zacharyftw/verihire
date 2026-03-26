@@ -60,18 +60,6 @@ export class SkillsController {
     return category;
   }
 
-  @Get(':slug')
-  @ApiOperation({ summary: 'Get skill by slug' })
-  @ApiResponse({ status: 200, description: 'Skill details' })
-  @ApiResponse({ status: 404, description: 'Skill not found' })
-  async findBySlug(@Param('slug') slug: string) {
-    const skill = await this.skillsService.findBySlug(slug);
-    if (!skill) {
-      throw new NotFoundException('Skill not found');
-    }
-    return skill;
-  }
-
   @Get(':id/stats')
   @ApiOperation({ summary: 'Get skill statistics' })
   @ApiResponse({ status: 200, description: 'Skill statistics' })
@@ -82,5 +70,17 @@ export class SkillsController {
       throw new NotFoundException('Skill not found');
     }
     return stats;
+  }
+
+  @Get(':slug')
+  @ApiOperation({ summary: 'Get skill by slug' })
+  @ApiResponse({ status: 200, description: 'Skill details' })
+  @ApiResponse({ status: 404, description: 'Skill not found' })
+  async findBySlug(@Param('slug') slug: string) {
+    const skill = await this.skillsService.findBySlug(slug);
+    if (!skill) {
+      throw new NotFoundException('Skill not found');
+    }
+    return skill;
   }
 }

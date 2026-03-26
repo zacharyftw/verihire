@@ -103,6 +103,73 @@ export class CertificatesController {
     return this.certificatesService.getStats();
   }
 
+  @Get('admin/revoked')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all revoked certificates (admin only)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'skillId', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'List of revoked certificates' })
+  async getRevokedCertificates(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('skillId') skillId?: string
+  ): Promise<{
+    certificates: Array<{
+      id: string;
+      certificateNumber: string;
+      revokedAt: Date;
+      revocationReason: string | null;
+      candidateId: string;
+      skillId: string | null;
+    }>;
+    total: number;
+  }> {
+    return this.revocationService.getRevokedCertificates({ page, limit, skillId });
+  }
+
+  // ==========================================================================
+  // CERTIFICATE VERIFICATION
+  // ==========================================================================
+
+  @Post('verify')
+  @ApiOperation({ summary: 'Verify certificate by number or hash' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verification result',
+    type: VerificationResultDto,
+  })
+  async verifyCertificate(@Body() dto: VerifyCertificateDto): Promise<VerificationResultDto> {
+    return this.verificationService.verify(dto);
+  }
+
+  @Get('verify/:certificateNumber/quick')
+  @ApiOperation({ summary: 'Quick verification check' })
+  @ApiParam({ name: 'certificateNumber', description: 'Certificate number to verify' })
+  @ApiResponse({
+    status: 200,
+    description: 'Quick verification result',
+  })
+  async quickVerify(
+    @Param('certificateNumber') certificateNumber: string
+  ): Promise<{ valid: boolean; reason?: string }> {
+    return this.verificationService.quickVerify(certificateNumber);
+  }
+
+  @Get('verify/:certificateNumber')
+  @ApiOperation({ summary: 'Verify certificate by certificate number' })
+  @ApiParam({ name: 'certificateNumber', description: 'Certificate number to verify' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verification result',
+    type: VerificationResultDto,
+  })
+  async verifyCertificateByNumber(
+    @Param('certificateNumber') certificateNumber: string
+  ): Promise<VerificationResultDto> {
+    return this.verificationService.verify({ certificateNumber });
+  }
+
   @Get('candidate/:candidateId')
   @ApiOperation({ summary: 'Get all certificates for a candidate' })
   @ApiParam({ name: 'candidateId', description: 'Candidate UUID' })
@@ -115,21 +182,6 @@ export class CertificatesController {
     @Param('candidateId', ParseUUIDPipe) candidateId: string
   ): Promise<CertificateResponseDto[]> {
     return this.certificatesService.getCandidateCertificates(candidateId);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get certificate by ID' })
-  @ApiParam({ name: 'id', description: 'Certificate UUID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Certificate details',
-    type: CertificateResponseDto,
-  })
-  @ApiResponse({ status: 404, description: 'Certificate not found' })
-  async getCertificateById(
-    @Param('id', ParseUUIDPipe) id: string
-  ): Promise<CertificateResponseDto> {
-    return this.certificatesService.getCertificateById(id);
   }
 
   @Get('number/:certificateNumber')
@@ -208,46 +260,21 @@ export class CertificatesController {
     }
   }
 
-  // ==========================================================================
-  // CERTIFICATE VERIFICATION
-  // ==========================================================================
-
-  @Get('verify/:certificateNumber')
-  @ApiOperation({ summary: 'Verify certificate by certificate number' })
-  @ApiParam({ name: 'certificateNumber', description: 'Certificate number to verify' })
-  @ApiResponse({
-    status: 200,
-    description: 'Verification result',
-    type: VerificationResultDto,
-  })
-  async verifyCertificateByNumber(
-    @Param('certificateNumber') certificateNumber: string
-  ): Promise<VerificationResultDto> {
-    return this.verificationService.verify({ certificateNumber });
-  }
-
-  @Post('verify')
-  @ApiOperation({ summary: 'Verify certificate by number or hash' })
-  @ApiResponse({
-    status: 200,
-    description: 'Verification result',
-    type: VerificationResultDto,
-  })
-  async verifyCertificate(@Body() dto: VerifyCertificateDto): Promise<VerificationResultDto> {
-    return this.verificationService.verify(dto);
-  }
-
-  @Get('verify/:certificateNumber/quick')
-  @ApiOperation({ summary: 'Quick verification check' })
-  @ApiParam({ name: 'certificateNumber', description: 'Certificate number to verify' })
-  @ApiResponse({
-    status: 200,
-    description: 'Quick verification result',
-  })
-  async quickVerify(
-    @Param('certificateNumber') certificateNumber: string
-  ): Promise<{ valid: boolean; reason?: string }> {
-    return this.verificationService.quickVerify(certificateNumber);
+  @Get(':id/revocation-history')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get revocation history for a certificate' })
+  @ApiParam({ name: 'id', description: 'Certificate UUID' })
+  @ApiResponse({ status: 200, description: 'Revocation history' })
+  @ApiResponse({ status: 404, description: 'Certificate not found' })
+  async getRevocationHistory(@Param('id', ParseUUIDPipe) id: string): Promise<{
+    isRevoked: boolean;
+    revokedAt?: Date;
+    revocationReason?: string;
+    revokedBy?: string;
+    reinstatedAt?: string;
+    reinstateReason?: string;
+  }> {
+    return this.revocationService.getRevocationHistory(id);
   }
 
   // ==========================================================================
@@ -282,45 +309,18 @@ export class CertificatesController {
     return { success: true };
   }
 
-  @Get(':id/revocation-history')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get revocation history for a certificate' })
+  @Get(':id')
+  @ApiOperation({ summary: 'Get certificate by ID' })
   @ApiParam({ name: 'id', description: 'Certificate UUID' })
-  @ApiResponse({ status: 200, description: 'Revocation history' })
+  @ApiResponse({
+    status: 200,
+    description: 'Certificate details',
+    type: CertificateResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Certificate not found' })
-  async getRevocationHistory(@Param('id', ParseUUIDPipe) id: string): Promise<{
-    isRevoked: boolean;
-    revokedAt?: Date;
-    revocationReason?: string;
-    revokedBy?: string;
-    reinstatedAt?: string;
-    reinstateReason?: string;
-  }> {
-    return this.revocationService.getRevocationHistory(id);
-  }
-
-  @Get('admin/revoked')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all revoked certificates (admin only)' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'skillId', required: false, type: String })
-  @ApiResponse({ status: 200, description: 'List of revoked certificates' })
-  async getRevokedCertificates(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-    @Query('skillId') skillId?: string
-  ): Promise<{
-    certificates: Array<{
-      id: string;
-      certificateNumber: string;
-      revokedAt: Date;
-      revocationReason: string | null;
-      candidateId: string;
-      skillId: string | null;
-    }>;
-    total: number;
-  }> {
-    return this.revocationService.getRevokedCertificates({ page, limit, skillId });
+  async getCertificateById(
+    @Param('id', ParseUUIDPipe) id: string
+  ): Promise<CertificateResponseDto> {
+    return this.certificatesService.getCertificateById(id);
   }
 }
