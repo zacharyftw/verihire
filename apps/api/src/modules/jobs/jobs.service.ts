@@ -26,17 +26,29 @@ import {
   ApplyToJobDto,
   UpdateApplicationDto,
 } from './dto/job.dto';
+import { ConfigService } from '@nestjs/config';
 import { ResumeAnalysisService } from '../resume-analysis/resume-analysis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
+  private readonly aiApiKey: string;
+  private readonly aiModel: string;
+  private readonly aiBaseUrl: string;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly resumeAnalysisService: ResumeAnalysisService,
     private readonly notificationsService: NotificationsService
-  ) {}
+  ) {
+    this.aiApiKey = this.configService.get<string>('openai.apiKey') || '';
+    this.aiModel = this.configService.get<string>('openai.model') || 'llama-3.3-70b-versatile';
+    this.aiBaseUrl = this.configService.get<string>(
+      'openai.baseUrl',
+      'https://api.groq.com/openai/v1'
+    );
+  }
   // ===== Job CRUD =====
 
   async createJob(recruiterId: string, data: CreateJobDto) {
@@ -672,6 +684,97 @@ export class JobsService {
 
   // ===== Match candidates to job =====
 
+  private async aiRankCandidates(
+    job: { title: string; description: string | null; requirements?: string | null },
+    candidates: Array<{
+      id: string;
+      user: { firstName: string | null; lastName: string | null };
+      currentRole?: string | null;
+      currentCompany?: string | null;
+      yearsExperience?: number | null;
+      candidateSkills: Array<{ skill: { name: string }; level?: string | null; verified: boolean }>;
+      domainScores: unknown;
+      matchScore: number;
+    }>
+  ): Promise<
+    Array<{
+      candidateId: string;
+      aiScore: number;
+      reasoning: string;
+      strengths: string[];
+      gaps: string[];
+    }>
+  > {
+    if (!this.aiApiKey || candidates.length === 0) return [];
+
+    const systemPrompt = `You are an expert technical recruiter AI. You evaluate candidates for job positions.
+You will receive a job description and a list of candidates with their skills and assessment scores.
+For each candidate, provide:
+- aiScore (0-100): How well they fit this specific role
+- reasoning (1-2 sentences): Why this score
+- strengths (2-3 bullet points): What makes them a good fit
+- gaps (1-2 bullet points): What they're missing
+
+Return ONLY a JSON array: [{ "candidateId": "...", "aiScore": 0, "reasoning": "...", "strengths": ["..."], "gaps": ["..."] }]`;
+
+    const candidateSummaries = candidates.map(c => ({
+      id: c.id,
+      name: `${c.user.firstName || ''} ${c.user.lastName || ''}`.trim(),
+      currentRole: c.currentRole || 'Not specified',
+      experience: c.yearsExperience ? `${c.yearsExperience} years` : 'Unknown',
+      skills: c.candidateSkills
+        .map(s => `${s.skill.name} (${s.level || 'unrated'}${s.verified ? ', verified' : ''})`)
+        .join(', '),
+      domainScores: c.domainScores || {},
+      ruleBasedScore: c.matchScore,
+    }));
+
+    const userPrompt = `## Job
+Title: ${job.title}
+Description: ${job.description || 'Not specified'}
+Requirements: ${job.requirements || 'Not specified'}
+
+## Candidates
+${JSON.stringify(candidateSummaries, null, 2)}
+
+Score each candidate for this specific role. Be critical — only give 80+ to truly strong matches.`;
+
+    try {
+      const response = await fetch(`${this.aiBaseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.aiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.aiModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 4096,
+        }),
+      });
+
+      if (!response.ok) {
+        this.logger.error(`Groq API error: ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      const jsonStr = content
+        .replace(/```json?\n?/g, '')
+        .replace(/```/g, '')
+        .trim();
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      this.logger.error(`AI ranking failed: ${err}`);
+      return [];
+    }
+  }
+
   async findMatchingCandidates(
     jobId: string,
     recruiterId: string,
@@ -758,7 +861,7 @@ export class JobsService {
     const appliedCandidateIds = new Set(existingApplications.map(a => a.candidateId));
     const filteredCandidates = candidates.filter(c => !appliedCandidateIds.has(c.id));
 
-    return this.matchCandidatesRuleBased(
+    const ruleResults = this.matchCandidatesRuleBased(
       jobSkills,
       filteredCandidates as any,
       requiredSkillIds,
@@ -766,6 +869,42 @@ export class JobsService {
       limit,
       offset
     );
+
+    // AI re-rank top candidates
+    const topCandidates = ruleResults.items.slice(0, 10);
+
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { title: true, description: true, requirements: true },
+    });
+
+    const aiScores = job ? await this.aiRankCandidates(job, topCandidates as any) : [];
+
+    // Merge AI scores into results
+    const aiScoreMap = new Map(aiScores.map(a => [a.candidateId, a]));
+    const enhancedItems = ruleResults.items.map(candidate => {
+      const ai = aiScoreMap.get(candidate.id);
+      return {
+        ...candidate,
+        aiScore: ai?.aiScore ?? null,
+        aiReasoning: ai?.reasoning ?? null,
+        aiStrengths: ai?.strengths ?? [],
+        aiGaps: ai?.gaps ?? [],
+      };
+    });
+
+    // Re-sort: AI-scored candidates first (by aiScore), then rest by matchScore
+    enhancedItems.sort((a, b) => {
+      if (a.aiScore != null && b.aiScore != null) return b.aiScore - a.aiScore;
+      if (a.aiScore != null) return -1;
+      if (b.aiScore != null) return 1;
+      return b.matchScore - a.matchScore;
+    });
+
+    return {
+      items: enhancedItems,
+      meta: ruleResults.meta,
+    };
   }
 
   /**

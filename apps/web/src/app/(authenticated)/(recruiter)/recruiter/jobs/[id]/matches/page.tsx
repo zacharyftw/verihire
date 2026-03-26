@@ -34,6 +34,10 @@ interface MatchedCandidate {
   locationCity?: string;
   yearsExperience?: number;
   candidateSkills?: Array<{ skillId: string; skill?: { name: string } }>;
+  aiScore?: number | null;
+  aiReasoning?: string | null;
+  aiStrengths?: string[];
+  aiGaps?: string[];
 }
 
 export default function MatchesPage() {
@@ -77,9 +81,14 @@ export default function MatchesPage() {
         {job && <span className="text-sm text-muted-foreground">{job.title}</span>}
       </div>
 
-      <div className="mb-6 flex items-center gap-2">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <h1 className="text-2xl font-bold">AI-Matched Candidates</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h1 className="text-2xl font-bold">AI-Powered Matching</h1>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Candidates are pre-filtered by skills, then ranked by AI analysis.
+        </p>
       </div>
 
       {!matches.length ? (
@@ -97,7 +106,7 @@ export default function MatchesPage() {
             );
             return (
               <Card key={match.id}>
-                <CardContent className="flex items-center gap-4 p-4">
+                <CardContent className="flex items-start gap-4 p-4">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
                     <span className="text-lg font-bold text-primary">{normalizedScore}%</span>
                   </div>
@@ -155,15 +164,62 @@ export default function MatchesPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {match.matchedSkillsCount}/{match.totalRequiredSkills} required skills matched
                     </p>
+                    {match.aiScore != null && (
+                      <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-sm font-medium">
+                            <Sparkles className="h-3 w-3 text-blue-600" />
+                            AI Analysis
+                          </span>
+                          <Badge variant="outline" className="border-blue-300 text-blue-700">
+                            {match.aiScore}% match
+                          </Badge>
+                        </div>
+                        {match.aiReasoning && (
+                          <p className="text-sm text-blue-800">{match.aiReasoning}</p>
+                        )}
+                        {match.aiStrengths && match.aiStrengths.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-green-700">Strengths:</p>
+                            <ul className="ml-4 list-disc text-xs text-green-700">
+                              {match.aiStrengths.map((s, i) => (
+                                <li key={i}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {match.aiGaps && match.aiGaps.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-amber-700">Gaps:</p>
+                            <ul className="ml-4 list-disc text-xs text-amber-700">
+                              {match.aiGaps.map((g, i) => (
+                                <li key={i}>{g}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handleAdd(match.id)}
-                    disabled={adding === match.id}
-                  >
-                    <UserPlus className="mr-1 h-4 w-4" />
-                    Shortlist
-                  </Button>
+                  <div className="flex flex-col items-end gap-2">
+                    {match.aiScore != null ? (
+                      <Badge variant="default" className="bg-blue-600 text-xs">
+                        AI Ranked
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        Rule-Based
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => handleAdd(match.id)}
+                      disabled={adding === match.id}
+                    >
+                      <UserPlus className="mr-1 h-4 w-4" />
+                      Shortlist
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );
