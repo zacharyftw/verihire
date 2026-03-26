@@ -52,7 +52,7 @@ export class ChallengesService {
     ]);
 
     return {
-      data: challenges,
+      items: challenges,
       meta: {
         total,
         limit,

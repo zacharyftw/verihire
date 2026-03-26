@@ -188,7 +188,7 @@ export class ReviewsService {
     ]);
 
     return {
-      data: reviews.map(r => ({
+      items: reviews.map(r => ({
         submissionId: r.submissionId,
         challengeTitle: r.submission.challenge?.title || 'Unknown',
         challengeType: r.submission.challenge?.type || 'CODING',

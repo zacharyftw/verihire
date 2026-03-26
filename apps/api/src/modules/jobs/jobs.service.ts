@@ -570,7 +570,7 @@ export class JobsService {
     ]);
 
     return {
-      data: shortlists,
+      items: shortlists,
       meta: { total, limit, offset, hasMore: offset + shortlists.length < total },
     };
   }
@@ -601,7 +601,7 @@ export class JobsService {
     ]);
 
     return {
-      data: shortlists,
+      items: shortlists,
       meta: { total, limit, offset, hasMore: offset + shortlists.length < total },
     };
   }
@@ -627,7 +627,7 @@ export class JobsService {
 
     if (jobSkills.length === 0) {
       return {
-        data: [],
+        items: [],
         meta: { total: 0, limit, offset, hasMore: false },
         message: 'Add skills to the job to find matching candidates',
       };
@@ -820,7 +820,7 @@ export class JobsService {
       .slice(0, limit);
 
     return {
-      data: sorted,
+      items: sorted,
       meta: {
         total: sorted.length,
         limit,
@@ -1034,15 +1034,20 @@ export class JobsService {
           select: {
             id: true,
             title: true,
-            difficulty: true,
-            type: true,
             domainTag: true,
           },
         },
       },
     });
 
-    return updatedApplication;
+    return {
+      ...updatedApplication,
+      challenges: updatedApplication?.challenges.map(c => ({
+        id: c.id,
+        title: c.title,
+        skillName: c.domainTag || 'General',
+      })),
+    };
   }
 
   async getJobApplications(
@@ -1114,7 +1119,7 @@ export class JobsService {
     ]);
 
     return {
-      data: applications,
+      items: applications,
       meta: { total, limit, offset, hasMore: offset + applications.length < total },
     };
   }
@@ -1282,7 +1287,7 @@ export class JobsService {
     ]);
 
     return {
-      data: applications,
+      items: applications,
       meta: { total, limit, offset, hasMore: offset + applications.length < total },
     };
   }

@@ -260,7 +260,7 @@ export class SubmissionsService {
     ]);
 
     return {
-      data: submissions,
+      items: submissions,
       meta: {
         total,
         limit,
@@ -358,7 +358,7 @@ export class SubmissionsService {
     ]);
 
     return {
-      data: submissions,
+      items: submissions,
       meta: { total, limit, offset, hasMore: offset + submissions.length < total },
     };
   }

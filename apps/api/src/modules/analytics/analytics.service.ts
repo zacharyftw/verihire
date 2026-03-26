@@ -20,8 +20,8 @@ export class AnalyticsService {
 
     return {
       activeJobs,
-      totalCandidates,
-      totalViews: shortlists,
+      totalApplicants: totalCandidates,
+      shortlisted: shortlists,
       hireRate,
     };
   }

@@ -5,10 +5,10 @@ export class RecruiterDashboardDto {
   activeJobs: number;
 
   @ApiProperty()
-  totalCandidates: number;
+  totalApplicants: number;
 
   @ApiProperty()
-  totalViews: number;
+  shortlisted: number;
 
   @ApiProperty()
   hireRate: number;
