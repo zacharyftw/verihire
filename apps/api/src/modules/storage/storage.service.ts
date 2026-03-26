@@ -391,7 +391,12 @@ export class StorageService implements OnModuleInit {
    * Generate a presigned URL for direct download
    */
   getFileUrl(key: string): string {
-    return `${this.endpoint}/${this.bucket}/${key}`;
+    if (this.isMinIO) {
+      return `${this.endpoint}/${this.bucket}/${key}`;
+    }
+    // Supabase public bucket URL
+    const baseUrl = this.endpoint.replace('/storage/v1/s3', '');
+    return `${baseUrl}/storage/v1/object/public/${this.bucket}/${key}`;
   }
 
   /**

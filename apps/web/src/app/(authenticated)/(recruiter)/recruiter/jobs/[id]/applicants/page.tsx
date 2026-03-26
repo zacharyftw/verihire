@@ -322,20 +322,30 @@ function CertificateCard({ certificate }: { certificate: JobApplication['certifi
           : 'text-gray-600';
 
   return (
-    <div className="flex items-center gap-4 rounded-lg border bg-gradient-to-r from-amber-50 to-yellow-50 p-4">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
-        <Award className="h-6 w-6 text-amber-600" />
+    <div className="rounded-lg border bg-gradient-to-r from-amber-50 to-yellow-50 p-4">
+      <div className="flex items-center gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+          <Award className="h-6 w-6 text-amber-600" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">
+            {certificate.metadata?.title || 'VeriHire Certificate'}
+          </p>
+          <p className="text-xs text-muted-foreground">#{certificate.certificateNumber}</p>
+          <p className="text-xs text-muted-foreground">Issued {formatDate(certificate.issuedAt)}</p>
+        </div>
+        <div className="text-right">
+          <p className={`text-2xl font-bold ${gradeColor}`}>{certificate.grade}</p>
+          <p className="text-sm text-muted-foreground">{Math.round(certificate.finalScore)}%</p>
+        </div>
       </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium">
-          {certificate.metadata?.title || 'VeriHire Certificate'}
-        </p>
-        <p className="text-xs text-muted-foreground">#{certificate.certificateNumber}</p>
-        <p className="text-xs text-muted-foreground">Issued {formatDate(certificate.issuedAt)}</p>
-      </div>
-      <div className="text-right">
-        <p className={`text-2xl font-bold ${gradeColor}`}>{certificate.grade}</p>
-        <p className="text-sm text-muted-foreground">{Math.round(certificate.finalScore)}%</p>
+      <div className="mt-3 flex gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/verify/${certificate.certificateNumber}`} target="_blank">
+            <ExternalLink className="mr-1 h-3 w-3" />
+            View Certificate
+          </Link>
+        </Button>
       </div>
     </div>
   );
@@ -468,6 +478,14 @@ function ApplicantCard({
                 <FileText className="mr-1 h-3 w-3" />
                 <span className="hidden lg:inline">Resume</span>
               </a>
+            </Button>
+          )}
+          {app.certificate && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/verify/${app.certificate.certificateNumber}`} target="_blank">
+                <Award className="mr-1 h-3 w-3" />
+                <span className="hidden lg:inline">Certificate</span>
+              </Link>
             </Button>
           )}
           {(app.status === 'COMPLETED' || app.status === 'REVIEWED') && (
