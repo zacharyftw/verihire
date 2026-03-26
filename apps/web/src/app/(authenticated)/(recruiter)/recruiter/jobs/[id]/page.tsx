@@ -29,7 +29,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { PageLoader } from '@/components/loading-spinner';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { useJob, publishJob, closeJob, deleteJob, updateJob } from '@/hooks/use-jobs';
+import { useRecruiterJob, publishJob, closeJob, deleteJob, updateJob } from '@/hooks/use-jobs';
 import { jobSchema, type JobValues } from '@/lib/validations';
 import { ROUTES, JOB_STATUS_LABELS } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
@@ -39,7 +39,7 @@ export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const { data: job, isLoading, mutate } = useJob(id);
+  const { data: job, isLoading, mutate } = useRecruiterJob(id);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [editing, setEditing] = useState(false);

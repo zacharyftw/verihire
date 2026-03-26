@@ -55,6 +55,10 @@ export function useJob(id: string | undefined) {
   return useSWR<JobWithRelations>(id ? `/jobs/${id}` : null);
 }
 
+export function useRecruiterJob(id: string | undefined) {
+  return useSWR<JobWithRelations>(id ? `/jobs/recruiter/${id}` : null);
+}
+
 export function useJobSearch(filters: JobSearchFilters = {}) {
   return useSWR<JobSearchResult>(
     `/jobs/search${buildQuery(filters as Record<string, string | number | undefined>)}`

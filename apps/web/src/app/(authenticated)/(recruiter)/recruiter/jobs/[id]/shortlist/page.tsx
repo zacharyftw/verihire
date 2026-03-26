@@ -11,7 +11,7 @@ import { PageLoader } from '@/components/loading-spinner';
 import { EmptyState } from '@/components/empty-state';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
-  useJob,
+  useRecruiterJob,
   useJobShortlist,
   updateShortlistEntry,
   removeFromShortlist,
@@ -49,7 +49,7 @@ interface ShortlistItem {
 export default function ShortlistPage() {
   const params = useParams();
   const jobId = params.id as string;
-  const { data: job } = useJob(jobId);
+  const { data: job } = useRecruiterJob(jobId);
   const { data: shortlistData, isLoading, mutate } = useJobShortlist(jobId);
   const items: ShortlistItem[] = (shortlistData?.items || shortlistData || []) as ShortlistItem[];
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);

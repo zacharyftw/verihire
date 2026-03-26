@@ -13,6 +13,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -120,7 +121,19 @@ export class JobsController {
   }
 
   /**
-   * Get job by ID (public)
+   * Get job by ID for recruiter (any status)
+   * GET /api/v1/jobs/recruiter/:id
+   */
+  @Get('recruiter/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('RECRUITER')
+  @ApiBearerAuth()
+  async getJobForRecruiter(@Param('id', ParseUUIDPipe) id: string) {
+    return this.jobsService.getJobById(id, false, false);
+  }
+
+  /**
+   * Get job by ID (public, active only)
    * GET /api/v1/jobs/:id
    */
   @Get(':id')

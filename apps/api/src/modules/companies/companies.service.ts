@@ -10,7 +10,7 @@ import {
 
 @Injectable()
 export class CompaniesService {
-  async create(data: CreateCompanyDto): Promise<CompanyResponseDto> {
+  async create(data: CreateCompanyDto, recruiterId?: string): Promise<CompanyResponseDto> {
     const slug = this.generateSlug(data.name);
 
     // Check if slug already exists
@@ -34,6 +34,14 @@ export class CompaniesService {
         headquartersCountry: data.headquartersCountry,
       },
     });
+
+    // Link company to recruiter profile
+    if (recruiterId) {
+      await prisma.recruiterProfile.update({
+        where: { id: recruiterId },
+        data: { companyId: company.id },
+      });
+    }
 
     return this.mapToResponse(company);
   }

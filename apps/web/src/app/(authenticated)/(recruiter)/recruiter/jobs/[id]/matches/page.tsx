@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { PageLoader } from '@/components/loading-spinner';
 import { EmptyState } from '@/components/empty-state';
-import { useJob, useMatchingCandidates, addToShortlist } from '@/hooks/use-jobs';
+import { useRecruiterJob, useMatchingCandidates, addToShortlist } from '@/hooks/use-jobs';
 import { ROUTES } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
@@ -43,7 +43,7 @@ interface MatchedCandidate {
 export default function MatchesPage() {
   const params = useParams();
   const jobId = params.id as string;
-  const { data: job } = useJob(jobId);
+  const { data: job } = useRecruiterJob(jobId);
   const { data: rawData, isLoading } = useMatchingCandidates(jobId);
   const matches: MatchedCandidate[] = (rawData?.data ||
     rawData?.matches ||

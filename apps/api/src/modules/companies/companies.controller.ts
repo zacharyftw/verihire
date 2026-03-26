@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -53,8 +54,11 @@ export class CompaniesController {
   @Roles('RECRUITER')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create company (recruiter only)' })
-  async createCompany(@Body() body: CreateCompanyDto) {
-    return this.companiesService.create(body);
+  async createCompany(
+    @Body() body: CreateCompanyDto,
+    @Request() req: { user: { recruiterProfileId: string } }
+  ) {
+    return this.companiesService.create(body, req.user.recruiterProfileId);
   }
 
   @Patch(':id')

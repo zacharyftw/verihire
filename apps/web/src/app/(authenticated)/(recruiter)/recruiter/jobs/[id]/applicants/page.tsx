@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { PageLoader } from '@/components/loading-spinner';
 import { EmptyState } from '@/components/empty-state';
-import { useJob } from '@/hooks/use-jobs';
+import { useRecruiterJob } from '@/hooks/use-jobs';
 import { useJobApplicants, updateApplication, type JobApplication } from '@/hooks/use-recruiter';
 import { ROUTES } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
@@ -61,7 +61,7 @@ export default function JobApplicantsPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
-  const { data: job, isLoading: jobLoading } = useJob(jobId);
+  const { data: job, isLoading: jobLoading } = useRecruiterJob(jobId);
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [messagingId, setMessagingId] = useState<string | null>(null);

@@ -58,10 +58,14 @@ export class JobsService {
       select: { companyId: true },
     });
 
+    if (!recruiter?.companyId) {
+      throw new BadRequestException('Please create your company profile before posting jobs');
+    }
+
     return prisma.job.create({
       data: {
         recruiterId,
-        companyId: recruiter?.companyId,
+        companyId: recruiter.companyId,
         title: data.title,
         description: data.description,
         requirements: data.requirements,
@@ -301,7 +305,7 @@ export class JobsService {
     };
   }
 
-  async getJobById(jobId: string, trackView = false, publicOnly = false) {
+  async getJobById(jobId: string, trackView = false, publicOnly = false, recruiterId?: string) {
     const job = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
@@ -339,9 +343,11 @@ export class JobsService {
       throw new NotFoundException('Job not found');
     }
 
-    // For public access, only show active jobs
+    // For public access, only show active jobs (recruiters can see their own)
     if (publicOnly && job.status !== 'ACTIVE') {
-      throw new NotFoundException('Job not found');
+      if (!recruiterId || job.recruiterId !== recruiterId) {
+        throw new NotFoundException('Job not found');
+      }
     }
 
     // Track view if job is active
