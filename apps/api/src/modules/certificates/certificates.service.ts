@@ -599,9 +599,16 @@ export class CertificatesService {
 
     const skill: SkillInfoDto = {
       id: certificate.skill?.id ?? '',
-      name: certificate.skill?.name ?? 'General',
-      category: certificate.skill?.category?.name ?? 'General',
-      level: (metadata.skillLevel as string) ?? 'intermediate',
+      name:
+        certificate.skill?.name ??
+        (metadata.domainTag as string) ??
+        (metadata.title as string) ??
+        'Software Development',
+      category: certificate.skill?.category?.name ?? (metadata.domainTag as string) ?? 'Technology',
+      level:
+        (metadata.skillLevel as string) ??
+        (metadata.domainLevel as string)?.toLowerCase() ??
+        'intermediate',
     };
 
     const evaluation: EvaluationInfoDto = {

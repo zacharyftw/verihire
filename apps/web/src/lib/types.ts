@@ -21,6 +21,7 @@ export interface Certificate extends BaseCertificate {
   skill?: Skill | null;
   challenge?: Challenge | null;
   metadata?: { title?: string; certificateType?: string; domainTag?: string; domainLevel?: string };
+  evaluation?: { score: number; grade: string; percentile?: number; challengeTitle?: string };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

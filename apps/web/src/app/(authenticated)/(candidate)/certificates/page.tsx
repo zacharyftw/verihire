@@ -61,15 +61,15 @@ export default function CertificatesPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Score</span>
                   <span className="font-medium">
-                    {(cert.finalScore ?? cert.aiScore) != null
-                      ? `${Math.round(cert.finalScore ?? cert.aiScore!)}%`
+                    {(cert.evaluation?.score ?? cert.finalScore ?? cert.aiScore) != null
+                      ? `${Math.round(cert.evaluation?.score ?? cert.finalScore ?? cert.aiScore!)}%`
                       : '—'}
                   </span>
                 </div>
-                {cert.grade && (
+                {(cert.evaluation?.grade ?? cert.grade) && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Grade</span>
-                    <Badge variant="secondary">{cert.grade}</Badge>
+                    <Badge variant="secondary">{cert.evaluation?.grade ?? cert.grade}</Badge>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-sm">
