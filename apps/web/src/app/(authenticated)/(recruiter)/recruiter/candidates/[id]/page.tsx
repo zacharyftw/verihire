@@ -12,6 +12,7 @@ import {
   ExternalLink,
   BarChart3,
   MessageSquare,
+  FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ interface CandidateDetail {
   linkedinUrl?: string;
   githubUrl?: string;
   portfolioUrl?: string;
+  resumeUrl?: string;
   user?: { firstName: string; lastName: string; email: string };
   skills?: Array<{ skillId: string; skill?: { name: string }; verifiedLevel?: string }>;
   certificates?: Array<{
@@ -139,6 +141,43 @@ export default function CandidateDetailPage() {
               <h3 className="mb-2 font-medium">About</h3>
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{candidate.bio}</p>
             </div>
+          )}
+
+          {candidate.resumeUrl && (
+            <>
+              <Separator />
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 font-medium">
+                    <FileText className="h-4 w-4" />
+                    Resume
+                  </h3>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={candidate.resumeUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-1 h-3 w-3" />
+                      Open in New Tab
+                    </a>
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-md border">
+                  <object
+                    data={candidate.resumeUrl}
+                    type="application/pdf"
+                    className="h-[500px] w-full"
+                  >
+                    <div className="flex h-[200px] flex-col items-center justify-center gap-2 bg-muted/30">
+                      <FileText className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Unable to preview PDF inline.</p>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={candidate.resumeUrl} target="_blank" rel="noopener noreferrer">
+                          Download Resume
+                        </a>
+                      </Button>
+                    </div>
+                  </object>
+                </div>
+              </div>
+            </>
           )}
 
           {(candidate.linkedinUrl || candidate.githubUrl || candidate.portfolioUrl) && (
