@@ -53,7 +53,7 @@ export class PdfGeneratorService {
       try {
         const chunks: Buffer[] = [];
 
-        // Create PDF document in landscape A4
+        // Create PDF document in landscape A4 — single page only
         const doc = new PDFDocument({
           size: 'A4',
           layout: 'landscape',
@@ -192,7 +192,11 @@ export class PdfGeneratorService {
       .font('Helvetica-Bold')
       .fontSize(28)
       .fillColor(this.COLORS.primary)
-      .text(certificate.candidate.name, centerX - 250, 195, { width: 500, align: 'center' });
+      .text(certificate.candidate.name, centerX - 250, 195, {
+        width: 500,
+        align: 'center',
+        lineBreak: false,
+      });
 
     doc
       .font('Helvetica')
@@ -207,14 +211,19 @@ export class PdfGeneratorService {
   private drawSkillInfo(doc: PDFKit.PDFDocument, certificate: CertificateResponseDto): void {
     const centerX = this.PAGE_WIDTH / 2;
 
-    // Skill name
+    // Skill name — truncate to prevent page overflow
+    const skillName =
+      certificate.skill.name.length > 40
+        ? certificate.skill.name.substring(0, 40) + '...'
+        : certificate.skill.name;
     doc
       .font('Helvetica-Bold')
-      .fontSize(24)
+      .fontSize(22)
       .fillColor(this.COLORS.accent)
-      .text(certificate.skill.name.toUpperCase(), centerX - 250, 260, {
+      .text(skillName.toUpperCase(), centerX - 250, 260, {
         width: 500,
         align: 'center',
+        lineBreak: false,
       });
 
     // Skill level badge
@@ -237,13 +246,18 @@ export class PdfGeneratorService {
       .text(level, badgeX, badgeY + 7, { width: badgeWidth, align: 'center' });
 
     // Category
+    const category =
+      certificate.skill.category.length > 30
+        ? certificate.skill.category.substring(0, 30) + '...'
+        : certificate.skill.category;
     doc
       .font('Helvetica')
       .fontSize(10)
       .fillColor(this.COLORS.lightText)
-      .text(`Category: ${certificate.skill.category}`, centerX - 100, 330, {
+      .text(`Category: ${category}`, centerX - 100, 330, {
         width: 200,
         align: 'center',
+        lineBreak: false,
       });
   }
 
@@ -293,13 +307,18 @@ export class PdfGeneratorService {
         .text(percentileText, startX + 170, startY + 30, { width: 150, align: 'center' });
     }
 
-    // Challenge info
+    // Challenge info — truncate long titles
+    const challengeTitle =
+      certificate.evaluation.challengeTitle.length > 60
+        ? certificate.evaluation.challengeTitle.substring(0, 60) + '...'
+        : certificate.evaluation.challengeTitle;
     doc
       .font('Helvetica')
       .fontSize(9)
       .fillColor(this.COLORS.lightText)
-      .text(`Challenge: ${certificate.evaluation.challengeTitle}`, startX, startY + 90, {
+      .text(`Challenge: ${challengeTitle}`, startX, startY + 90, {
         width: 320,
+        lineBreak: false,
       });
   }
 
