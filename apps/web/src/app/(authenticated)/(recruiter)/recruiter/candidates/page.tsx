@@ -31,12 +31,12 @@ export default function CandidateSearchPage() {
 
   const { data, isLoading } = useCandidateSearch({
     locations: debouncedSearch ? [debouncedSearch] : undefined,
-    remotePreference: remotePreference || undefined,
+    remotePreference: remotePreference && remotePreference !== 'all' ? remotePreference : undefined,
     verifiedOnly: verifiedOnly || undefined,
-    minExperience: minExperience ? parseInt(minExperience) : undefined,
+    minExperience: minExperience && minExperience !== 'all' ? parseInt(minExperience) : undefined,
   });
 
-  const candidates = data?.items || data || [];
+  const candidates = data?.items ?? [];
 
   return (
     <div>
@@ -114,8 +114,8 @@ export default function CandidateSearchPage() {
               currentCompany?: string;
               locationCity?: string;
               yearsExperience?: number;
-              skills?: Array<{ skillId: string; skill?: { name: string } }>;
-              certificateCount?: number;
+              candidateSkills?: Array<{ skillId: string; skill?: { name: string } }>;
+              _count?: { certificates: number };
             };
             return (
               <Link key={c.id} href={ROUTES.candidateProfile(c.id)}>
@@ -139,7 +139,7 @@ export default function CandidateSearchPage() {
                             {c.yearsExperience}y exp
                           </span>
                         )}
-                        {c.skills?.slice(0, 4).map(s => (
+                        {c.candidateSkills?.slice(0, 4).map(s => (
                           <Badge key={s.skillId} variant="secondary" className="text-xs">
                             {s.skill?.name || s.skillId}
                           </Badge>
@@ -147,9 +147,9 @@ export default function CandidateSearchPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      {c.certificateCount != null && c.certificateCount > 0 && (
+                      {(c._count?.certificates ?? 0) > 0 && (
                         <Badge variant="outline" className="text-xs">
-                          {c.certificateCount} cert{c.certificateCount !== 1 ? 's' : ''}
+                          {c._count!.certificates} cert{c._count!.certificates !== 1 ? 's' : ''}
                         </Badge>
                       )}
                     </div>
