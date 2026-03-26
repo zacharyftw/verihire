@@ -721,6 +721,10 @@ export class JobsService {
       },
       select: {
         id: true,
+        currentRole: true,
+        currentCompany: true,
+        locationCity: true,
+        headline: true,
         yearsExperience: true,
         domainScores: true,
         user: {
@@ -746,9 +750,17 @@ export class JobsService {
       skip: offset,
     });
 
+    // Filter out candidates who already applied to this job
+    const existingApplications = await prisma.jobApplication.findMany({
+      where: { jobId },
+      select: { candidateId: true },
+    });
+    const appliedCandidateIds = new Set(existingApplications.map(a => a.candidateId));
+    const filteredCandidates = candidates.filter(c => !appliedCandidateIds.has(c.id));
+
     return this.matchCandidatesRuleBased(
       jobSkills,
-      candidates as any,
+      filteredCandidates as any,
       requiredSkillIds,
       jobSkillNames,
       limit,
