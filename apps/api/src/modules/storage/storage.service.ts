@@ -391,9 +391,42 @@ export class StorageService implements OnModuleInit {
    * Generate a presigned URL for direct download
    */
   getFileUrl(key: string): string {
-    // For MinIO/local development, return direct URL
-    // For production S3, you might want to use presigned URLs
     return `${this.endpoint}/${this.bucket}/${key}`;
+  }
+
+  /**
+   * Generate a time-limited signed URL for secure file access via Supabase Storage API
+   */
+  async getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
+    try {
+      // Use Supabase Storage REST API to create a signed URL
+      const supabaseUrl = this.endpoint.replace('/storage/v1/s3', '');
+      const response = await fetch(`${supabaseUrl}/storage/v1/object/sign/${this.bucket}/${key}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.configService.get<string>('S3_SECRET_KEY') || this.configService.get<string>('SUPABASE_SERVICE_KEY') || ''}`,
+          apikey:
+            this.configService.get<string>('SUPABASE_ANON_KEY') ||
+            this.configService.get<string>('S3_ACCESS_KEY') ||
+            '',
+        },
+        body: JSON.stringify({ expiresIn }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.signedURL) {
+          return `${supabaseUrl}/storage/v1${data.signedURL}`;
+        }
+      }
+
+      this.logger.warn(`Supabase signed URL failed, falling back to direct URL`);
+      return this.getFileUrl(key);
+    } catch (error) {
+      this.logger.error(`Failed to generate presigned URL for ${key}: ${error}`);
+      return this.getFileUrl(key);
+    }
   }
 
   /**

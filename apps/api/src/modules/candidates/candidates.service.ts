@@ -474,6 +474,24 @@ export class CandidatesService {
     };
   }
 
+  async getResumePresignedUrl(candidateId: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: { resumeUrl: true },
+    });
+
+    if (!profile?.resumeUrl) {
+      throw new NotFoundException('No resume uploaded');
+    }
+
+    // Extract the key from the full URL
+    const url = new URL(profile.resumeUrl);
+    const key = url.pathname.replace(/^\/[^/]+\//, ''); // Remove bucket prefix
+
+    const presignedUrl = await this.storageService.getPresignedUrl(key);
+    return { url: presignedUrl };
+  }
+
   async getProfileForRecruiter(candidateId: string) {
     const profile = await prisma.candidateProfile.findUnique({
       where: { id: candidateId },

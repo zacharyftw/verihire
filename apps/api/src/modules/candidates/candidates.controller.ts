@@ -363,6 +363,21 @@ export class CandidatesController {
     return this.candidatesService.deletePortfolioFile(candidateId, decodedKey);
   }
 
+  @Get(':id/resume-url')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get presigned resume URL' })
+  @ApiResponse({ status: 200, description: 'Presigned URL' })
+  async getResumeUrl(
+    @Param('id') id: string,
+    @Request() req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } }
+  ): Promise<unknown> {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
+    return this.candidatesService.getResumePresignedUrl(id);
+  }
+
   @Get(':id/profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
