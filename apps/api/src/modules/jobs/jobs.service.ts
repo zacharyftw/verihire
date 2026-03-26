@@ -1365,6 +1365,16 @@ Score each candidate for this specific role. Be critical — only give 80+ to tr
               },
             },
           },
+          certificate: {
+            select: {
+              id: true,
+              certificateNumber: true,
+              finalScore: true,
+              grade: true,
+              metadata: true,
+              issuedAt: true,
+            },
+          },
         },
         orderBy: { appliedAt: 'desc' },
         take: limit,

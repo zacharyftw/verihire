@@ -28,8 +28,26 @@ export interface ApplicationCandidate {
   headline?: string;
   locationCity?: string;
   yearsExperience?: number;
+  resumeUrl?: string;
   user: { firstName: string; lastName: string; email: string };
   candidateSkills: Array<{ skill: { name: string }; level?: string }>;
+}
+
+export interface ApplicationChallenge {
+  id: string;
+  title: string;
+  type: string;
+  difficulty: string;
+  submissions: Array<{ id: string; status: string; finalScore?: number }>;
+}
+
+export interface ApplicationCertificate {
+  id: string;
+  certificateNumber: string;
+  finalScore: number;
+  grade: string;
+  metadata: { title?: string };
+  issuedAt: string;
 }
 
 export interface JobApplication {
@@ -40,6 +58,8 @@ export interface JobApplication {
   averageScore?: number;
   reviewerNotes?: string;
   candidate: ApplicationCandidate;
+  challenges?: ApplicationChallenge[];
+  certificate?: ApplicationCertificate;
   _count?: { challenges: number };
   completedChallenges?: number;
 }
@@ -61,7 +81,9 @@ export function useJobApplicants(
   params.set('offset', String(offset));
   const qs = params.toString();
 
-  return useSWR<JobApplicationsResponse>(jobId ? `/jobs/${jobId}/applications?${qs}` : null);
+  return useSWR<JobApplicationsResponse>(jobId ? `/jobs/${jobId}/applications?${qs}` : null, {
+    refreshInterval: 10000,
+  });
 }
 
 export function updateApplication(
