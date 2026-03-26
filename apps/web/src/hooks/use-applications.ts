@@ -29,7 +29,13 @@ interface ApplyResponse {
 }
 
 export function useMyApplications() {
-  return useSWR<Application[]>('/jobs/candidate/my-applications', { refreshInterval: 15000 });
+  const result = useSWR<{ items: Application[]; meta: unknown } | Application[]>(
+    '/jobs/candidate/my-applications',
+    { refreshInterval: 15000 }
+  );
+  const raw = result.data;
+  const items = Array.isArray(raw) ? raw : (raw?.items ?? []);
+  return { ...result, data: items };
 }
 
 export async function applyToJob(jobId: string, coverLetter?: string) {
