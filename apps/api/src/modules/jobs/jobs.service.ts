@@ -873,6 +873,16 @@ export class JobsService {
       throw new BadRequestException('This job is not currently accepting applications');
     }
 
+    // Check candidate has uploaded a resume
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: { resumeUrl: true },
+    });
+
+    if (!profile?.resumeUrl) {
+      throw new BadRequestException('Please upload your resume before applying');
+    }
+
     // Check candidate hasn't already applied
     const existing = await prisma.jobApplication.findUnique({
       where: {

@@ -13,6 +13,7 @@ import { PageLoader } from '@/components/loading-spinner';
 import { StatusBadge } from '@/components/status-badge';
 import { useJob } from '@/hooks/use-jobs';
 import { useMyApplications, applyToJob } from '@/hooks/use-applications';
+import { useCandidateProfile } from '@/hooks/use-candidate';
 import { ROUTES, APPLICATION_STATUS_LABELS, APPLICATION_STATUS_COLORS } from '@/lib/constants';
 
 const REMOTE_LABELS: Record<string, string> = {
@@ -46,6 +47,8 @@ export default function JobDetailPage() {
 
   const { data: job, isLoading } = useJob(id);
   const { data: applications } = useMyApplications();
+  const { data: profile } = useCandidateProfile();
+  const hasResume = !!profile?.resumeUrl;
   const [coverLetter, setCoverLetter] = useState('');
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState<{
@@ -243,12 +246,25 @@ export default function JobDetailPage() {
                     />
                   </div>
                   {error && <p className="text-sm text-red-600">{error}</p>}
-                  <Button className="w-full" onClick={handleApply} disabled={applying}>
-                    {applying ? 'Applying...' : 'Apply Now'}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    You will be assigned skill challenges after applying.
-                  </p>
+                  {!hasResume ? (
+                    <>
+                      <p className="text-sm text-amber-600">
+                        You need to upload your resume before applying.
+                      </p>
+                      <Button className="w-full" asChild>
+                        <Link href={ROUTES.profile}>Upload Resume</Link>
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button className="w-full" onClick={handleApply} disabled={applying}>
+                        {applying ? 'Applying...' : 'Apply Now'}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        You will be assigned skill challenges after applying.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>
