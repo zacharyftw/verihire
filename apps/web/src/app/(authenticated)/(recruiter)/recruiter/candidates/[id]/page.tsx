@@ -300,9 +300,12 @@ export default function CandidateDetailPage() {
                 <h3 className="mb-2 font-medium">Certificates</h3>
                 <div className="space-y-2">
                   {candidate.certificates.map(cert => (
-                    <div
+                    <a
                       key={cert.id}
-                      className="flex items-center justify-between rounded-lg border p-3"
+                      href={`/verify/${cert.certificateNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent/50"
                     >
                       <div className="flex items-center gap-2">
                         <Award className="h-4 w-4 text-primary" />
@@ -316,8 +319,11 @@ export default function CandidateDetailPage() {
                           <p className="text-xs text-muted-foreground">#{cert.certificateNumber}</p>
                         </div>
                       </div>
-                      <Badge>{cert.score}%</Badge>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{cert.score}%</Badge>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    </a>
                   ))}
                 </div>
               </div>
