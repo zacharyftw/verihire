@@ -25,15 +25,36 @@ export default function VerifyCertificatePage() {
           <CardTitle>Certificate Verification</CardTitle>
         </CardHeader>
         <CardContent>
-          {error || !data?.valid ? (
+          {error || !data ? (
             <div className="space-y-3 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
                 <XCircle className="h-8 w-8 text-red-600" />
               </div>
               <h3 className="text-lg font-medium">Certificate Not Found</h3>
               <p className="text-sm text-muted-foreground">
-                No valid certificate found for number: {certNumber}
+                No certificate found for number: {certNumber}
               </p>
+            </div>
+          ) : !data.valid ? (
+            <div className="space-y-3 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
+                <XCircle className="h-8 w-8 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-medium text-yellow-800">Certificate Invalid</h3>
+              <p className="text-sm text-muted-foreground">
+                {data.error || 'This certificate failed one or more verification checks.'}
+              </p>
+              {data.verificationSteps?.some(s => !s.passed) && (
+                <div className="mt-2 space-y-1 text-left">
+                  {data.verificationSteps
+                    .filter(s => !s.passed)
+                    .map(s => (
+                      <p key={s.name} className="text-xs text-muted-foreground">
+                        ✗ {s.name}: {s.details}
+                      </p>
+                    ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">

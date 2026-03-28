@@ -62,6 +62,7 @@ interface CandidateDetail {
 function ResumeViewer({ candidateId }: { candidateId: string }) {
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -78,7 +79,7 @@ function ResumeViewer({ candidateId }: { candidateId: string }) {
         objectUrl = URL.createObjectURL(blob);
         setResumeUrl(objectUrl);
       })
-      .catch(() => setResumeUrl(null))
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
 
     return () => {
@@ -93,6 +94,33 @@ function ResumeViewer({ candidateId }: { candidateId: string }) {
         <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
           <FileText className="h-4 w-4" />
           Loading resume...
+        </div>
+      </>
+    );
+  }
+
+  if (failed) {
+    return (
+      <>
+        <Separator />
+        <div>
+          <h3 className="mb-2 flex items-center gap-2 font-medium">
+            <FileText className="h-4 w-4" />
+            Resume
+          </h3>
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <p className="text-sm text-muted-foreground">Unable to load resume preview.</p>
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={`${API_URL}/candidates/${candidateId}/resume`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="mr-1 h-3 w-3" />
+                Open Resume
+              </a>
+            </Button>
+          </div>
         </div>
       </>
     );

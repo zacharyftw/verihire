@@ -484,8 +484,8 @@ export class CandidatesService {
       throw new NotFoundException('No resume uploaded');
     }
 
-    const url = new URL(profile.resumeUrl);
-    const key = url.pathname.replace(/^\/[^/]+\//, '');
+    const match = profile.resumeUrl.match(/\/verihire\/(.+)$/);
+    const key = match ? match[1] : profile.resumeUrl.split('/').slice(-4).join('/');
     const ext = key.split('.').pop()?.toLowerCase() || 'pdf';
     const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
     const filename = `resume.${ext}`;
