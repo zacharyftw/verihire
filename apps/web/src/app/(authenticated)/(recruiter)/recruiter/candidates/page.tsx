@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Search, MapPin, Briefcase, CheckCircle } from 'lucide-react';
+import { Search, MapPin, Briefcase, CheckCircle, X, Filter } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,18 +27,30 @@ export default function CandidateSearchPage() {
   const [remotePreference, setRemotePreference] = useState('');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minExperience, setMinExperience] = useState('');
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const { data: skillsData } = useSkills();
+  const [selectedSkills, setSelectedSkills] = useState<Array<{ id: string; name: string }>>([]);
+  const [skillSearch, setSkillSearch] = useState('');
 
   const debouncedSearch = useDebounce(search, 300);
+  const debouncedSkillSearch = useDebounce(skillSearch, 300);
 
   const { data, isLoading } = useCandidateSearch({
     locations: debouncedSearch ? [debouncedSearch] : undefined,
     remotePreference: remotePreference && remotePreference !== 'all' ? remotePreference : undefined,
     verifiedOnly: verifiedOnly || undefined,
     minExperience: minExperience && minExperience !== 'all' ? parseInt(minExperience) : undefined,
-    skillIds: selectedSkills.length > 0 ? selectedSkills : undefined,
+    skillIds: selectedSkills.length ? selectedSkills.map(s => s.id) : undefined,
   });
+
+  const { data: skillsData } = useSkills(debouncedSkillSearch || undefined);
+  const availableSkills = (skillsData?.items || []).filter(
+    s => !selectedSkills.some(sel => sel.id === s.id)
+  );
+
+  const toggleSkill = (skill: { id: string; name: string }) => {
+    setSelectedSkills(prev =>
+      prev.some(s => s.id === skill.id) ? prev.filter(s => s.id !== skill.id) : [...prev, skill]
+    );
+  };
 
   const candidates = data?.items ?? [];
 
@@ -91,41 +103,52 @@ export default function CandidateSearchPage() {
         </Button>
       </div>
 
-      {/* Skill filter */}
-      {skillsData?.items && skillsData.items.length > 0 && (
-        <div className="mb-6">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Filter by skills</p>
-          <div className="flex flex-wrap gap-2">
-            {skillsData.items.map((skill: { id: string; name: string }) => {
-              const isSelected = selectedSkills.includes(skill.id);
-              return (
-                <Badge
-                  key={skill.id}
-                  variant={isSelected ? 'default' : 'outline'}
-                  className="cursor-pointer select-none"
-                  onClick={() =>
-                    setSelectedSkills(prev =>
-                      isSelected ? prev.filter(id => id !== skill.id) : [...prev, skill.id]
-                    )
-                  }
-                >
-                  {skill.name}
-                </Badge>
-              );
-            })}
-            {selectedSkills.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-xs"
-                onClick={() => setSelectedSkills([])}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
+      <div className="mb-6 space-y-2">
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Filter by skills..."
+            value={skillSearch}
+            onChange={e => setSkillSearch(e.target.value)}
+            className="pl-10"
+          />
         </div>
-      )}
+        {selectedSkills.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {selectedSkills.map(s => (
+              <Badge
+                key={s.id}
+                variant="default"
+                className="cursor-pointer gap-1"
+                onClick={() => toggleSkill(s)}
+              >
+                {s.name}
+                <X className="h-3 w-3" />
+              </Badge>
+            ))}
+            <button
+              onClick={() => setSelectedSkills([])}
+              className="text-xs text-muted-foreground underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+        {availableSkills.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {availableSkills.slice(0, 12).map(s => (
+              <Badge
+                key={s.id}
+                variant="outline"
+                className="cursor-pointer hover:bg-secondary"
+                onClick={() => toggleSkill({ id: s.id, name: s.name })}
+              >
+                {s.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">
