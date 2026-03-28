@@ -113,12 +113,10 @@ export class VerificationService {
     const allPassed = verificationSteps.every(step => step.passed);
 
     let certificateResponse;
-    if (allPassed) {
-      try {
-        certificateResponse = await this.certificatesService.getCertificateById(certificate.id);
-      } catch {
-        // If we can't get the full response, continue without it
-      }
+    try {
+      certificateResponse = await this.certificatesService.getCertificateById(certificate.id);
+    } catch {
+      // If we can't get the full response, continue without it
     }
 
     return {
@@ -199,8 +197,8 @@ export class VerificationService {
         candidateId: certificate.candidateId,
         candidateName: candidateName || 'Unknown',
         candidateEmailHash: this.cryptoService.hashEmail(certificate.candidate.user.email),
-        skillId: certificate.skillId ?? '',
-        skillName: certificate.skill?.name ?? 'General',
+        skillId: certificate.skillId as string,
+        skillName: certificate.skill?.name ?? 'Unknown Skill',
         skillCategory: certificate.skill?.category?.name ?? 'General',
         skillLevel: this.determineSkillLevel(Number(certificate.finalScore)),
         challengeId: certificate.challengeId ?? '',

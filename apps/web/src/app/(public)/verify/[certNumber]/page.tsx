@@ -36,23 +36,42 @@ export default function VerifyCertificatePage() {
               </p>
             </div>
           ) : !data.valid ? (
-            <div className="space-y-3 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
-                <XCircle className="h-8 w-8 text-yellow-600" />
+            <div className="space-y-4">
+              <div className="space-y-2 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
+                  <XCircle className="h-8 w-8 text-yellow-600" />
+                </div>
+                <h3 className="text-lg font-medium text-yellow-800">Certificate Invalid</h3>
+                <p className="text-sm text-muted-foreground">
+                  {data.error || 'This certificate failed one or more verification checks.'}
+                </p>
               </div>
-              <h3 className="text-lg font-medium text-yellow-800">Certificate Invalid</h3>
-              <p className="text-sm text-muted-foreground">
-                {data.error || 'This certificate failed one or more verification checks.'}
-              </p>
-              {data.verificationSteps?.some(s => !s.passed) && (
-                <div className="mt-2 space-y-1 text-left">
-                  {data.verificationSteps
-                    .filter(s => !s.passed)
-                    .map(s => (
-                      <p key={s.name} className="text-xs text-muted-foreground">
-                        ✗ {s.name}: {s.details}
-                      </p>
-                    ))}
+              {data.certificate && (
+                <div className="space-y-3 rounded-lg border p-4">
+                  <InfoRow label="Certificate #" value={data.certificate.certificateNumber} />
+                  <InfoRow
+                    label="Skill"
+                    value={
+                      data.certificate.skill?.name ||
+                      data.certificate.evaluation?.challengeTitle ||
+                      '—'
+                    }
+                  />
+                  {data.certificate.evaluation?.grade && (
+                    <InfoRow label="Grade" value={data.certificate.evaluation.grade} />
+                  )}
+                  <InfoRow
+                    label="Score"
+                    value={
+                      data.certificate.evaluation?.score != null
+                        ? `${Math.round(data.certificate.evaluation.score)}%`
+                        : '—'
+                    }
+                  />
+                  <InfoRow
+                    label="Issued"
+                    value={data.certificate.issuedAt ? formatDate(data.certificate.issuedAt) : '—'}
+                  />
                 </div>
               )}
             </div>
