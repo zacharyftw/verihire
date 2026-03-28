@@ -25,7 +25,7 @@ export default function VerifyCertificatePage() {
           <CardTitle>Certificate Verification</CardTitle>
         </CardHeader>
         <CardContent>
-          {error || !data ? (
+          {error || !data?.valid ? (
             <div className="space-y-3 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
                 <XCircle className="h-8 w-8 text-red-600" />
@@ -45,25 +45,32 @@ export default function VerifyCertificatePage() {
               </div>
 
               <div className="space-y-3 rounded-lg border p-4">
-                <InfoRow label="Certificate #" value={data.certificateNumber} />
-                <InfoRow label="Skill" value={data.skill?.name || data.skillId || '—'} />
-                {data.grade && <InfoRow label="Grade" value={data.grade} />}
+                <InfoRow label="Certificate #" value={data.certificate?.certificateNumber} />
+                <InfoRow label="Skill" value={data.certificate?.skill?.name || '—'} />
+                {data.certificate?.evaluation?.grade && (
+                  <InfoRow label="Grade" value={data.certificate.evaluation.grade} />
+                )}
                 <InfoRow
                   label="Score"
                   value={
-                    (data.finalScore ?? data.aiScore) != null
-                      ? `${Math.round(data.finalScore ?? data.aiScore!)}%`
+                    data.certificate?.evaluation?.score != null
+                      ? `${Math.round(data.certificate.evaluation.score)}%`
                       : '—'
                   }
                 />
-                <InfoRow label="Issued" value={data.issuedAt ? formatDate(data.issuedAt) : '—'} />
-                {data.expiresAt && <InfoRow label="Expires" value={formatDate(data.expiresAt)} />}
-                {data.blockchainHash && (
+                <InfoRow
+                  label="Issued"
+                  value={data.certificate?.issuedAt ? formatDate(data.certificate.issuedAt) : '—'}
+                />
+                {data.certificate?.expiresAt && (
+                  <InfoRow label="Expires" value={formatDate(data.certificate.expiresAt)} />
+                )}
+                {data.certificate?.verification?.blockchainTxId && (
                   <InfoRow
                     label="Blockchain"
                     value={
                       <Badge variant="secondary" className="font-mono text-xs">
-                        {data.blockchainHash.slice(0, 16)}...
+                        {data.certificate.verification.blockchainTxId.slice(0, 16)}...
                       </Badge>
                     }
                   />
