@@ -13,7 +13,9 @@ import {
   UploadedFile,
   BadRequestException,
   ForbiddenException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -376,6 +378,27 @@ export class CandidatesController {
       throw new ForbiddenException('Access denied');
     }
     return this.candidatesService.getResumePresignedUrl(id);
+  }
+
+  @Get(':id/resume')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Stream resume file through API proxy' })
+  @ApiResponse({ status: 200, description: 'Resume file stream' })
+  async streamResume(
+    @Param('id') id: string,
+    @Request()
+    req: Request & { user: { candidateProfileId?: string; recruiterProfileId?: string } },
+    @Res() res: Response
+  ): Promise<void> {
+    if (req.user.candidateProfileId !== id && !req.user.recruiterProfileId) {
+      throw new ForbiddenException('Access denied');
+    }
+    const { stream, contentType, filename } = await this.candidatesService.getResumeStream(id);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    stream.pipe(res);
   }
 
   @Get(':id/profile')

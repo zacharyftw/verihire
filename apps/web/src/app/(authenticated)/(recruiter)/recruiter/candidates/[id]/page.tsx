@@ -25,7 +25,8 @@ import { useDomainScores, type DomainScore } from '@/hooks/use-candidate';
 import { startConversation } from '@/hooks/use-messages';
 import { toast } from '@/hooks/use-toast';
 import useSWR from 'swr';
-import { api } from '@/lib/api';
+import { getTokens } from '@/lib/api';
+import { API_URL } from '@/lib/constants';
 
 interface CandidateDetail {
   id: string;
@@ -63,11 +64,26 @@ function ResumeViewer({ candidateId }: { candidateId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get<{ url: string }>(`/candidates/${candidateId}/resume-url`)
-      .then(data => setResumeUrl(data.url))
+    let objectUrl: string | null = null;
+
+    const tokens = getTokens();
+    fetch(`${API_URL}/candidates/${candidateId}/resume`, {
+      headers: tokens?.accessToken ? { Authorization: `Bearer ${tokens.accessToken}` } : {},
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('No resume');
+        return res.blob();
+      })
+      .then(blob => {
+        objectUrl = URL.createObjectURL(blob);
+        setResumeUrl(objectUrl);
+      })
       .catch(() => setResumeUrl(null))
       .finally(() => setLoading(false));
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [candidateId]);
 
   if (loading) {
@@ -94,7 +110,11 @@ function ResumeViewer({ candidateId }: { candidateId: string }) {
             Resume
           </h3>
           <Button variant="outline" size="sm" asChild>
-            <a href={resumeUrl} target="_blank" rel="noopener noreferrer">
+            <a
+              href={`${API_URL}/candidates/${candidateId}/resume`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <ExternalLink className="mr-1 h-3 w-3" />
               Open in New Tab
             </a>
@@ -106,7 +126,11 @@ function ResumeViewer({ candidateId }: { candidateId: string }) {
               <FileText className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Unable to preview PDF inline.</p>
               <Button variant="outline" size="sm" asChild>
-                <a href={resumeUrl} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={`${API_URL}/candidates/${candidateId}/resume`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Download Resume
                 </a>
               </Button>

@@ -474,6 +474,26 @@ export class CandidatesService {
     };
   }
 
+  async getResumeStream(candidateId: string) {
+    const profile = await prisma.candidateProfile.findUnique({
+      where: { id: candidateId },
+      select: { resumeUrl: true },
+    });
+
+    if (!profile?.resumeUrl) {
+      throw new NotFoundException('No resume uploaded');
+    }
+
+    const url = new URL(profile.resumeUrl);
+    const key = url.pathname.replace(/^\/[^/]+\//, '');
+    const ext = key.split('.').pop()?.toLowerCase() || 'pdf';
+    const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+    const filename = `resume.${ext}`;
+
+    const stream = await this.storageService.getFileStream(key);
+    return { stream, contentType, filename };
+  }
+
   async getResumePresignedUrl(candidateId: string) {
     const profile = await prisma.candidateProfile.findUnique({
       where: { id: candidateId },
