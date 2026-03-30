@@ -241,17 +241,34 @@ export class VerificationService {
     publicKey: string;
   }): VerificationStepDto {
     try {
-      const signatureValid = this.cryptoService.verifySignature(
-        certificate.hash,
-        certificate.signature,
-        certificate.publicKey
-      );
+      // Try with stored public key first; if it can't be parsed (legacy certs store
+      // a raw 32-byte value instead of a full SPKI DER key), fall back to the
+      // issuer's current key so the certificate still verifies correctly.
+      let signatureValid = false;
+      let usedFallback = false;
+
+      try {
+        signatureValid = this.cryptoService.verifySignature(
+          certificate.hash,
+          certificate.signature,
+          certificate.publicKey
+        );
+      } catch {
+        // Stored key is not a valid SPKI DER — verify against issuer key
+        signatureValid = this.cryptoService.verifySignature(
+          certificate.hash,
+          certificate.signature
+        );
+        usedFallback = true;
+      }
 
       return {
         name: 'Digital Signature',
         passed: signatureValid,
         details: signatureValid
-          ? 'Digital signature verified successfully'
+          ? usedFallback
+            ? 'Digital signature verified against issuer key'
+            : 'Digital signature verified successfully'
           : 'Invalid digital signature',
       };
     } catch (error) {
