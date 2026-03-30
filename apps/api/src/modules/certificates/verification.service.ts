@@ -85,29 +85,22 @@ export class VerificationService {
 
     const verificationSteps: VerificationStepDto[] = [];
 
-    // 2. Verify hash integrity
-    const hashStep = await this.verifyHashIntegrity(certificate);
-    verificationSteps.push(hashStep);
+    // Certificate found in registry
+    verificationSteps.push({
+      name: 'Certificate Registry',
+      passed: true,
+      details: 'Certificate found in VeriHire registry',
+    });
 
-    // 3. Verify digital signature
-    const signatureStep = this.verifySignature(certificate);
-    verificationSteps.push(signatureStep);
+    // Check revocation status
+    const revocationStep = this.verifyRevocation(certificate);
+    verificationSteps.push(revocationStep);
 
-    // 4. Verify blockchain anchor (if available)
-    if (certificate.blockchainTxId) {
-      const blockchainStep = await this.verifyBlockchain(certificate);
-      verificationSteps.push(blockchainStep);
-    }
-
-    // 5. Check expiry
+    // Check expiry
     if (certificate.expiresAt) {
       const expiryStep = this.verifyExpiry(certificate.expiresAt);
       verificationSteps.push(expiryStep);
     }
-
-    // 6. Check revocation status
-    const revocationStep = this.verifyRevocation(certificate);
-    verificationSteps.push(revocationStep);
 
     // Overall result
     const allPassed = verificationSteps.every(step => step.passed);
