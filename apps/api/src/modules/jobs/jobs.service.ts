@@ -172,16 +172,12 @@ export class JobsService {
   }
 
   async deleteJob(jobId: string, recruiterId: string) {
-    const job = await this.getJobForRecruiter(jobId, recruiterId);
+    await this.getJobForRecruiter(jobId, recruiterId);
 
-    if (job.status === 'ACTIVE') {
-      throw new BadRequestException('Cannot delete an active job. Close it first.');
-    }
-
-    // Delete related records
     await prisma.$transaction([
       prisma.jobSkill.deleteMany({ where: { jobId } }),
       prisma.shortlist.deleteMany({ where: { jobId } }),
+      prisma.jobApplication.deleteMany({ where: { jobId } }),
       prisma.job.delete({ where: { id: jobId } }),
     ]);
 
