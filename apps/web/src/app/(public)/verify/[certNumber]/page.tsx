@@ -1,12 +1,14 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { CheckCircle2, XCircle, Shield } from 'lucide-react';
+import { CheckCircle2, XCircle, Shield, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/loading-spinner';
 import { useVerifyCertificate } from '@/hooks/use-certificates';
 import { formatDate } from '@/lib/utils';
+import { API_URL } from '@/lib/constants';
 
 export default function VerifyCertificatePage() {
   const params = useParams();
@@ -116,6 +118,19 @@ export default function VerifyCertificatePage() {
                   />
                 )}
               </div>
+
+              {data.certificate?.id && (
+                <Button className="w-full" asChild>
+                  <a
+                    href={`${API_URL}/certificates/${data.certificate.id}/download?format=pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Certificate PDF
+                  </a>
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
