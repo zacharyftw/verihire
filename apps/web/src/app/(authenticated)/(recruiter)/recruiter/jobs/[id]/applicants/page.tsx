@@ -496,7 +496,7 @@ function ApplicantCard({
               onClick={() => onStatusUpdate(app.id, 'SHORTLISTED')}
             >
               <UserCheck className="mr-1 h-3 w-3" />
-              <span className="hidden lg:inline">Shortlist</span>
+              <span className="hidden lg:inline">Accept</span>
             </Button>
           )}
           {app.status !== 'REJECTED' && app.status !== 'HIRED' && (
@@ -688,6 +688,7 @@ export default function JobApplicantsPage() {
             <SelectItem value="REVIEWED">Reviewed</SelectItem>
             <SelectItem value="SHORTLISTED">Shortlisted</SelectItem>
             <SelectItem value="REJECTED">Rejected</SelectItem>
+            <SelectItem value="HIRED">Hired</SelectItem>
           </SelectContent>
         </Select>
       </div>

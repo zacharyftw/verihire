@@ -29,6 +29,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ResumeAnalysisService } from '../resume-analysis/resume-analysis.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MessagesService } from '../messages/messages.service';
 
 @Injectable()
 export class JobsService {
@@ -40,7 +41,8 @@ export class JobsService {
   constructor(
     private readonly configService: ConfigService,
     private readonly resumeAnalysisService: ResumeAnalysisService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly messagesService: MessagesService
   ) {
     this.aiApiKey = this.configService.get<string>('openai.apiKey') || '';
     this.aiModel = this.configService.get<string>('openai.model') || 'llama-3.3-70b-versatile';
@@ -1493,6 +1495,39 @@ Score each candidate for this specific role. Be critical — only give 80+ to tr
         }
       } catch (err) {
         this.logger.warn(`Failed to send application status notification: ${err}`);
+      }
+
+      // Auto-send a message from the recruiter when candidate is accepted/shortlisted
+      if (data.status === 'SHORTLISTED') {
+        try {
+          const recruiterProfile = await prisma.recruiterProfile.findUnique({
+            where: { id: recruiterId },
+            select: { userId: true, user: { select: { firstName: true, lastName: true } } },
+          });
+
+          if (recruiterProfile) {
+            const recruiterUserId = recruiterProfile.userId;
+            const candidateUserId = updated.candidate.user.id;
+            const jobTitle = updated.job.title;
+            const recruiterName =
+              `${recruiterProfile.user.firstName || ''} ${recruiterProfile.user.lastName || ''}`.trim() ||
+              'The recruiter';
+
+            const conversation = await this.messagesService.getOrCreateConversation(
+              applicationId,
+              recruiterUserId,
+              candidateUserId
+            );
+
+            await this.messagesService.sendMessage(
+              conversation.id,
+              recruiterUserId,
+              `Hi! Congratulations — you've been shortlisted for the ${jobTitle} position. We were impressed with your results and would love to move forward. Please feel free to reply here if you have any questions. Looking forward to speaking with you!\n\n— ${recruiterName}`
+            );
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to send shortlist auto-message: ${err}`);
+        }
       }
     }
 
